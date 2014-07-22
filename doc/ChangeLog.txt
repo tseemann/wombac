@@ -1,0 +1,11 @@
+
+Version 1.1
+-----------
+* Added support for *.contig.tar.gz files from Bacteria_DRAFT
+* Bugfix: too many SNPs filtered out - fixed homozygous PL caller
+* Bugfix: nway was totally wrong, need to use depth at each pos too
+* Replaced faulty wombac-vcf_nway with wombac-nway
+
+Version 1.0
+-----------
+* Initial release

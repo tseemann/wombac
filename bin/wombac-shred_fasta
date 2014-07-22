@@ -8,6 +8,7 @@ setOptions();
 
 my $qualstr = (chr(33+$qual))x$readlen;
 $qualstr = "+\n$qualstr\n";
+
 my $idchar = $fastq ? '@' : '>';
 
 my $id = 0;
@@ -53,7 +54,7 @@ sub setOptions {
     {OPT=>"help",    VAR=>\&usage,             DESC=>"This help"},
     {OPT=>"verbose!",  VAR=>\$verbose, DEFAULT=>0, DESC=>"Verbose output"},
     {OPT=>"readlen=i",  VAR=>\$readlen, DEFAULT=>150, DESC=>"Read length"},
-    {OPT=>"coverage=f",  VAR=>\$coverage, DEFAULT=>40, DESC=>"Depth of coverage"},
+    {OPT=>"coverage=f",  VAR=>\$coverage, DEFAULT=>100, DESC=>"Depth of coverage"},
     {OPT=>"fastq!",  VAR=>\$fastq, DEFAULT=>0, DESC=>"Output FASTQ, not FASTA"},
     {OPT=>"qual=i",  VAR=>\$qual, DEFAULT=>40, DESC=>"Fake base quality (if --fastq)"},
   );

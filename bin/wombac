@@ -13,7 +13,7 @@ use Data::Dumper;
 
 my $EXE = $FindBin::RealScript;
 my $HOMEDIR = $FindBin::Bin;
-my $VERSION = "1.0";
+my $VERSION = "1.1";
 my $SYNOPSIS = "Fast bacterial core genome SNP trees";
 my $AUTHOR = 'Torsten Seemann <torsten.seemann@monash.edu>';
 my $URL = 'http://www.vicbioinformatics.com';
@@ -42,7 +42,7 @@ $ENV{PATH} .= ":$HOMEDIR/binaries/$OPSYS:$HOMEDIR/binaries/noarch";
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # check for exes
 
-for my $exe (qw(bwa samtools bcftools vcfutils.pl egrep wombac-shred_fasta wombac-vcf_nway make grep zcat)) {
+for my $exe (qw(bwa samtools bcftools vcfutils.pl wombac-vcf_homozygous wombac-shred_fasta wombac-nway make grep zcat)) {
   system("which $exe > /dev/null")==0 or err("Can not find '$exe' in PATH");
   msg("Found $exe - ok.");
 }
@@ -129,7 +129,13 @@ for my $sample (@samples)
   }
   else {
     # sample which is a FILE
-    @reads = ( "'<(zcat -f $sample | wombac-shred_fasta --fastq)'" );
+    # if .tgz then assume NCBI tarball of contigs, else assume a fasta file
+    if ( $sample =~ m/(\.tgz|\.tar.gz)$/ ) {
+      @reads = ( "'<(tar -O -zxf $sample | wombac-shred_fasta --fastq)'" );
+    }
+    else {
+      @reads = ( "'<(zcat -f $sample | wombac-shred_fasta --fastq)'" );
+    }
     @dep = ($sample);
   }
   
@@ -139,7 +145,7 @@ for my $sample (@samples)
   print
   "\n",
   "$id.bam: ref.fa.bwt @dep\n",
-  "\tbwa mem -k \$(WORDSIZE) -a -t \$(THREADS) ref.fa @reads",
+  "\tbwa mem -k \$(WORDSIZE) -t \$(THREADS) ref.fa @reads",
     " | samtools view -@ \$(THREADS) -S -b -u -T ref.fa -",
     " | samtools sort -@ \$(THREADS) -m 1G - $id\n",
 
@@ -149,8 +155,8 @@ for my $sample (@samples)
   "$id.vcf: ref.fa $id.bam.bai $id.bam.flagstat\n",
   "\tsamtools mpileup -E -q 10 -f ref.fa -g -u -I $id.bam",    # -I = no indels
     " | bcftools view -c -v -",
-    ' | egrep \'^#|255,[0-9]*,0$$\' ',   # definite 'homozygous' SNPs
     " | vcfutils.pl varFilter -Q 30",
+    " | wombac-vcf_homozygous",
     " > $id.vcf\n",
 
   "$id.bam.flagstat: $id.bam\n",
@@ -159,8 +165,10 @@ for my $sample (@samples)
 }
 
 my @vcfs = map { "$_.vcf" } @id;
-print "snps.aln: @vcfs\n";
-print "\twombac-vcf_nway @vcfs > snps.aln\n";
+my @bams = map { "$_.bam" } @id;
+
+print "snps.aln: @vcfs @bams\n";
+print "\twombac-nway @id > snps.aln\n";
 print "\t\@echo 'Results are in $outdir/snps.aln - try: SplitsTree -i $outdir/snps.aln'\n";
 
 select STDOUT;
@@ -248,7 +256,7 @@ sub version {
 sub show_citation {
   print STDERR << "EOCITE";
   
-If you use Baccore in your work, please cite:
+If you use $EXE in your work, please cite:
 
     Seemann T (2013)
     $EXE: $SYNOPSIS
@@ -299,8 +307,9 @@ sub usage {
   print STDERR "Synopsis:\n  $SYNOPSIS\n";
   print STDERR "Author:\n  $AUTHOR\n";
   print STDERR "Usage:\n  $EXE [options] --ref <ref.fa>  <sample1> <sample2> <sample3> ...\n";
-  print STDERR "    <sample> is folder?  expect FASTQ files in it (will auto-detect them)\n";
-  print STDERR "    <sample> is a file?  treat as FASTA file of contigs (already assembled)\n";
+  print STDERR "    <sample> = folder  ->  expect FASTQ files in it (will auto-detect them)\n";
+  print STDERR "    <sample> = .tar.gz ->  expect tar of FASTA contigs (like NCBI/EBI distribute)\n";
+  print STDERR "    <sample> = a file  ->  treat as FASTA file of contigs (already assembled)\n";
   foreach (@Options) {
     if (ref) {
       my $def = defined($_->{DEFAULT}) ? " (default '$_->{DEFAULT}')" : "";
