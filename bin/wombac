@@ -13,7 +13,7 @@ use Data::Dumper;
 
 my $EXE = $FindBin::RealScript;
 my $HOMEDIR = $FindBin::Bin;
-my $VERSION = "1.1";
+my $VERSION = "1.2";
 my $SYNOPSIS = "Fast bacterial core genome SNP trees";
 my $AUTHOR = 'Torsten Seemann <torsten.seemann@monash.edu>';
 my $URL = 'http://www.vicbioinformatics.com';
@@ -22,7 +22,7 @@ my $OPSYS = $^O;
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # command line options
 
-my(@Options, $quiet, $outdir, $force, $jobs, $threads, $ref, $run);
+my(@Options, $quiet, $outdir, $force, $jobs, $threads, $ref, $run, $distant, $noref);
 setOptions();
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
@@ -42,7 +42,7 @@ $ENV{PATH} .= ":$HOMEDIR/binaries/$OPSYS:$HOMEDIR/binaries/noarch";
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # check for exes
 
-for my $exe (qw(bwa samtools bcftools vcfutils.pl wombac-vcf_homozygous wombac-shred_fasta wombac-nway make grep zcat)) {
+for my $exe (qw(bwa samtools bcftools vcfutils.pl wombac-vcf_homozygous wombac-shred_fasta wombac-nway make grep zcat find)) {
   system("which $exe > /dev/null")==0 or err("Can not find '$exe' in PATH");
   msg("Found $exe - ok.");
 }
@@ -72,6 +72,11 @@ $ref or err("Please supply a reference FASTA file with --reference");
 $ref = File::Spec->rel2abs($ref);
 msg("Using reference genome: $ref");
 
+unless ($noref) {
+  unshift @samples, $ref;
+  msg("Added the --ref file to list of samples. Use --noref to prevent this.");
+}
+
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # prepare output folder
 
@@ -86,6 +91,19 @@ else {
 }
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
+# set options for --distant parameter
+
+my $bwa_mem_opts = '';
+my $shred_opts = '';
+
+if ($distant) {
+  $bwa_mem_opts = '-k 11 -w 200 -B 2 -U 5 -L 2';
+  $shred_opts = '--readlen 50';
+}
+
+msg("Using BWA MEM options: $bwa_mem_opts");
+
+# . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # generate a makefile
 
 my %seen;
@@ -95,10 +113,9 @@ select $MF;
 
 print
 "THREADS=$threads\n",
-"WORDSIZE=16\n",
 ".PHONY: all\n",
 "\n",
-"all: ref.fa.bwt ref.fa.fai snps.aln\n",
+"all: ref.fa.bwt ref.fa.fai snps.aln ids.txt\n",
 "ref.fa: $ref\n",
 "\tcp -v '$ref' ref.fa\n",
 "ref.fa.fai: ref.fa\n",
@@ -131,10 +148,10 @@ for my $sample (@samples)
     # sample which is a FILE
     # if .tgz then assume NCBI tarball of contigs, else assume a fasta file
     if ( $sample =~ m/(\.tgz|\.tar.gz)$/ ) {
-      @reads = ( "'<(tar -O -zxf $sample | wombac-shred_fasta --fastq)'" );
+      @reads = ( "'<(tar -O -zxf $sample | wombac-shred_fasta $shred_opts --fastq)'" );
     }
     else {
-      @reads = ( "'<(zcat -f $sample | wombac-shred_fasta --fastq)'" );
+      @reads = ( "'<(zcat -f $sample | wombac-shred_fasta $shred_opts --fastq)'" );
     }
     @dep = ($sample);
   }
@@ -145,7 +162,7 @@ for my $sample (@samples)
   print
   "\n",
   "$id.bam: ref.fa.bwt @dep\n",
-  "\tbwa mem -k \$(WORDSIZE) -t \$(THREADS) ref.fa @reads",
+  "\tbwa mem $bwa_mem_opts -t \$(THREADS) ref.fa @reads",
     " | samtools view -@ \$(THREADS) -S -b -u -T ref.fa -",
     " | samtools sort -@ \$(THREADS) -m 1G - $id\n",
 
@@ -163,6 +180,10 @@ for my $sample (@samples)
   "\tsamtools flagstat $id.bam > $id.bam.flagstat\n",
   "";
 }
+
+print "ids.txt: snps.aln\n";
+print "\trm -f ids.txt\n";
+print "\techo '$_' >> ids.txt\n" for @id;
 
 my @vcfs = map { "$_.vcf" } @id;
 my @bams = map { "$_.bam" } @id;
@@ -282,11 +303,13 @@ sub setOptions {
     {OPT=>"citation",  VAR=>\&show_citation,       DESC=>"Print citation for referencing $EXE"},
     {OPT=>"quiet!",    VAR=>\$quiet, DEFAULT=>0,   DESC=>"No screen output"},
     {OPT=>"ref=s",     VAR=>\$ref, DEFAULT=>'',    DESC=>"Reference FASTA file"},
+    {OPT=>"noref!",    VAR=>\$noref, DEFAULT=>0,   DESC=>"Exclude reference from tree"},
     {OPT=>"outdir=s",  VAR=>\$outdir, DEFAULT=>'', DESC=>"Output folder"},
     {OPT=>"force!",    VAR=>\$force, DEFAULT=>0,   DESC=>"Re-use existing output folder (can re-use calculations)"},
     {OPT=>"threads=i", VAR=>\$threads, DEFAULT=>0, DESC=>"Number of threads per job for bwa/samtools [auto]"},
     {OPT=>"jobs=i",    VAR=>\$jobs, DEFAULT=>0,    DESC=>"Number of parallel jobs to run [auto]"},
     {OPT=>"run!",      VAR=>\$run, DEFAULT=>0,     DESC=>"Run the analysis after setting up"},
+    {OPT=>"distant!",  VAR=>\$distant, DEFAULT=>0, DESC=>"Use settings best for samples distant from reference (slower)"},
   );
 
   (!@ARGV) && (usage());
@@ -304,7 +327,7 @@ sub setOptions {
 #----------------------------------------------------------------------
 
 sub usage {
-  print STDERR "Synopsis:\n  $SYNOPSIS\n";
+  print STDERR "Synopsis:\n  $EXE $VERSION - $SYNOPSIS\n";
   print STDERR "Author:\n  $AUTHOR\n";
   print STDERR "Usage:\n  $EXE [options] --ref <ref.fa>  <sample1> <sample2> <sample3> ...\n";
   print STDERR "    <sample> = folder  ->  expect FASTQ files in it (will auto-detect them)\n";

@@ -4,11 +4,12 @@ use strict;
 use Data::Dumper;
 use List::MoreUtils qw(any);
 
-my(@Options, $verbose, $mindepth);
+my(@Options, $verbose, $mindepth, $noref);
 setOptions();
 
 my %snp;
 my @id;
+my $num_snps=0;
 
 for my $prefix (@ARGV) {
   -r "$prefix.bam" or die "can not read BAM file: $prefix.bam";
@@ -25,6 +26,7 @@ for my $prefix (@ARGV) {
     next unless length($ref)==1 and length($alt)==1;
     $snp{$seq}{$pos}{REF} = $ref;
     $snp{$seq}{$pos}{$id} = $alt;
+    $num_snps++;
   }
   close VCF;
 }
@@ -40,19 +42,16 @@ for my $seq (keys %snp) {
 }
 close BED;
 
-print STDERR "Created file of BAM files\n";
-my $FOF = 'bamfiles.txt';
-open FOF, '>', $FOF or die "Unable to create/write '$FOF'";
-print FOF (map { "$_.bam\n" } @id);
-close FOF;
+my $IDS = write_list( 'ids.txt', \@id );
+my $FOF = write_list( 'bamfiles.txt', [ map { "$_.bam" } @id ] );
 
-print STDERR "Checking depth/coreness of each SNP site...";
+print STDERR "Checking depth/coreness of each SNP site...\n";
 my %aln;
-open DEPTH, "samtools depth -b $BED -f $FOF |";
+open DEPTH, "samtools depth -b $BED -f bamfiles.txt |";
 while (<DEPTH>) {
   my($seq,$pos,@cov) = split m/\t/;
   print STDERR "\rChecking: $seq $pos" if $verbose;
-  if (any { $_ < $mindepth } @cov) {
+  if (any { $_ < $mindepth } @cov) {   # this is the most important line! => core genome?
     delete $snp{$seq}{$pos};
   }
   else {
@@ -61,7 +60,7 @@ while (<DEPTH>) {
     }
   }
 }
-unlink $BED, $FOF;
+unlink $BED, $FOF, $IDS;
 
 print STDERR "\n" if $verbose;
 if (not defined $aln{$id[0]}) {
@@ -69,11 +68,28 @@ if (not defined $aln{$id[0]}) {
   exit -1;
 }
 
-printf STDERR "Found %d core SNPs.\n", length($aln{$id[0]});
+delete $aln{'ref'} if $noref;
+
+printf STDERR "Found %d core SNPs from %d candidates.\n", 
+  length($aln{$id[0]}), 
+  $num_snps;
 
 for my $id (@id) {
   print ">$id\n", $aln{$id}, "\n";
 } 
+
+#----------------------------------------------------------------------
+
+sub write_list {
+  my($filename, $list) = @_;
+  print STDERR "Writing to file: $filename\n";
+  open OUT, '>', $filename or die "Unable to create/write '$filename'";
+  print OUT map { "$_\n" } @$list;
+  close OUT;
+  return $filename;
+}
+
+#----------------------------------------------------------------------
 
 #----------------------------------------------------------------------
 # Option setting routines
@@ -85,6 +101,7 @@ sub setOptions {
     {OPT=>"help",    VAR=>\&usage,             DESC=>"This help"},
     {OPT=>"verbose!",  VAR=>\$verbose, DEFAULT=>0, DESC=>"Verbose output"},
     {OPT=>"mindepth=i",  VAR=>\$mindepth, DEFAULT=>1, DESC=>"Minimum depth to count as covered"},
+    {OPT=>"noref!",  VAR=>\$noref, DEFAULT=>0, DESC=>"Don't include reference in tree"},
   );
 
   (!@ARGV) && (usage());
