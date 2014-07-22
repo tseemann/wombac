@@ -1,4 +1,23 @@
 
+TODO
+----
+* timing information
+* require-all option?
+* make clean option
+* make a SNP report summary
+* report how many samples were skipped and list them
+* add .depth files
+* put into folders instead of all in one dir
+
+Version 1.3
+-----------
+* Switched to freebayes for SNP calling
+* New vcf_filter that copes with bcftools and freebayes
+* Add 'snps.txt' count summary
+* Add GZ.TBI outout
+* Add snps.bed and snps.gff
+* Change wombac-nway to use --output prefix rather than stdout
+
 Version 1.2
 -----------
 * Added --distant option to help get SNPs (more sensitive alignment)

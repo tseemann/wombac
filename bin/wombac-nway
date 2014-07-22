@@ -4,8 +4,10 @@ use strict;
 use Data::Dumper;
 use List::MoreUtils qw(any);
 
-my(@Options, $verbose, $mindepth, $noref);
+my(@Options, $verbose, $mindepth, $noref, $output);
 setOptions();
+
+$output or die "Please specify a prefix for output files, eg. --output snps";
 
 my %snp;
 my @id;
@@ -32,8 +34,8 @@ for my $prefix (@ARGV) {
 }
 printf STDERR "Read %d VCF files.\n", scalar(@id);
 
-my $BED = 'snps.bed';
-print STDERR "Creating BED file\n";
+my $BED = 'ref.bed';
+print STDERR "Creating BED file of all potential core SNPS: $BED\n";
 open BED, '>', $BED or die "Unable to write/create '$BED'";
 for my $seq (keys %snp) {
   for my $pos (sort { $a <=> $b } keys %{$snp{$seq}}) {
@@ -47,16 +49,38 @@ my $FOF = write_list( 'bamfiles.txt', [ map { "$_.bam" } @id ] );
 
 print STDERR "Checking depth/coreness of each SNP site...\n";
 my %aln;
+
+open COREBED, '>', "$output.bed" or die $!;
+open COREGFF, '>', "$output.gff" or die $!;
+print COREGFF "##gff-version 3\n";
+for my $seq (keys %snp) {
+  print COREGFF "##sequence-region $seq 1 99999999\n";
+}
+
+my $numcore=0;
 open DEPTH, "samtools depth -b $BED -f bamfiles.txt |";
 while (<DEPTH>) {
   my($seq,$pos,@cov) = split m/\t/;
   print STDERR "\rChecking: $seq $pos" if $verbose;
-  if (any { $_ < $mindepth } @cov) {   # this is the most important line! => core genome?
+  if (any { $_ < $mindepth } @cov) {
+    # only positions covered by ALL genomes will be potential 'core' sites   
     delete $snp{$seq}{$pos};
   }
   else {
-    for my $id (@id) {
-      $aln{$id} .= ( $snp{$seq}{$pos}{$id} || $snp{$seq}{$pos}{REF} );
+    # possible core site, check if bases are all the same or not
+    my $col = join( '', map { $snp{$seq}{$pos}{$_} || $snp{$seq}{$pos}{REF} } @id );
+#    print STDERR "$pos: $col\n" if $verbose;
+    my $same = substr($col,0,1)x(0+@id);
+    if ( $col ne $same ) {    # col has all same chars?
+      print STDERR "[CORE] $seq $pos: $col\n" if $verbose;
+      for my $id (@id) {
+        $aln{$id} .= ( $snp{$seq}{$pos}{$id} || $snp{$seq}{$pos}{REF} );
+      }
+      print COREBED join("\t", $seq, $pos-1, $pos),"\n";
+      $numcore++;
+      print COREGFF join("\t", $seq, 'wombac', 'variation', 
+                               $pos, $pos, '.', '.', 0, 
+                               sprintf("ID=SNP%06d", $numcore)),"\n";
     }
   }
 }
@@ -74,22 +98,21 @@ printf STDERR "Found %d core SNPs from %d candidates.\n",
   length($aln{$id[0]}), 
   $num_snps;
 
+open COREALN, '>', "$output.aln" or die $!;
 for my $id (@id) {
-  print ">$id\n", $aln{$id}, "\n";
+  print COREALN ">$id\n", $aln{$id}, "\n";
 } 
 
 #----------------------------------------------------------------------
 
 sub write_list {
   my($filename, $list) = @_;
-  print STDERR "Writing to file: $filename\n";
+  print STDERR "Writing temporary file: $filename\n";
   open OUT, '>', $filename or die "Unable to create/write '$filename'";
   print OUT map { "$_\n" } @$list;
   close OUT;
   return $filename;
 }
-
-#----------------------------------------------------------------------
 
 #----------------------------------------------------------------------
 # Option setting routines
@@ -102,6 +125,7 @@ sub setOptions {
     {OPT=>"verbose!",  VAR=>\$verbose, DEFAULT=>0, DESC=>"Verbose output"},
     {OPT=>"mindepth=i",  VAR=>\$mindepth, DEFAULT=>1, DESC=>"Minimum depth to count as covered"},
     {OPT=>"noref!",  VAR=>\$noref, DEFAULT=>0, DESC=>"Don't include reference in tree"},
+    {OPT=>"output=s",  VAR=>\$output, DEFAULT=>'', DESC=>"Output prefix for .aln/.bed/.gff"},
   );
 
   (!@ARGV) && (usage());

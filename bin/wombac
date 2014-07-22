@@ -13,7 +13,7 @@ use Data::Dumper;
 
 my $EXE = $FindBin::RealScript;
 my $HOMEDIR = $FindBin::Bin;
-my $VERSION = "1.2";
+my $VERSION = "1.3";
 my $SYNOPSIS = "Fast bacterial core genome SNP trees";
 my $AUTHOR = 'Torsten Seemann <torsten.seemann@monash.edu>';
 my $URL = 'http://www.vicbioinformatics.com';
@@ -42,7 +42,7 @@ $ENV{PATH} .= ":$HOMEDIR/binaries/$OPSYS:$HOMEDIR/binaries/noarch";
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # check for exes
 
-for my $exe (qw(bwa samtools bcftools vcfutils.pl wombac-vcf_homozygous wombac-shred_fasta wombac-nway make grep zcat find)) {
+for my $exe (qw(bwa samtools vcfutils.pl wombac-vcf_filter wombac-shred_fasta wombac-nway make grep find date bgzip tabix)) {
   system("which $exe > /dev/null")==0 or err("Can not find '$exe' in PATH");
   msg("Found $exe - ok.");
 }
@@ -113,9 +113,9 @@ select $MF;
 
 print
 "THREADS=$threads\n",
-".PHONY: all\n",
+".PHONY: all vcfindex\n",
 "\n",
-"all: ref.fa.bwt ref.fa.fai snps.aln ids.txt\n",
+"all: ref.fa.bwt ref.fa.fai snps.aln snps.txt vcfindex ids.txt\n",
 "ref.fa: $ref\n",
 "\tcp -v '$ref' ref.fa\n",
 "ref.fa.fai: ref.fa\n",
@@ -169,11 +169,15 @@ for my $sample (@samples)
   "$id.bam.bai: $id.bam\n",
   "\tsamtools index $id.bam $id.bam.bai\n",
 
+  "$id.vcf.gz.tbi: $id.vcf.gz\n",
+  "\ttabix -p vcf \$\<\n",
+
+  "$id.vcf.gz: $id.vcf\n",
+  "\tbgzip -c \$\< > \$\@\n",
+
   "$id.vcf: ref.fa $id.bam.bai $id.bam.flagstat\n",
-  "\tsamtools mpileup -E -q 10 -f ref.fa -g -u -I $id.bam",    # -I = no indels
-    " | bcftools view -c -v -",
-    " | vcfutils.pl varFilter -Q 30",
-    " | wombac-vcf_homozygous",
+  "\tfreebayes -p 1 -i -X -u -f ref.fa --standard-filters --bam $id.bam",
+    " | wombac-vcf_filter",
     " > $id.vcf\n",
 
   "$id.bam.flagstat: $id.bam\n",
@@ -186,14 +190,21 @@ print "\trm -f ids.txt\n";
 print "\techo '$_' >> ids.txt\n" for @id;
 
 my @vcfs = map { "$_.vcf" } @id;
+my @vcfidx = map { "$_.vcf.gz.tbi" } @id;
 my @bams = map { "$_.bam" } @id;
 
+print "vcfindex: @vcfidx\n";
+
+print "snps.txt: @vcfs\n";
+print "\tgrep -vcH @vcfs > snps.txt\n";
+
 print "snps.aln: @vcfs @bams\n";
-print "\twombac-nway @id > snps.aln\n";
+printf "\twombac-nway --output snps %s @id\n", ($noref ? '--noref' : '');
 print "\t\@echo 'Results are in $outdir/snps.aln - try: SplitsTree -i $outdir/snps.aln'\n";
 
 select STDOUT;
 
+msg("Your tree will contain", scalar(@id), "samples.");
 msg("Folder $outdir/ is now ready for analysis.");
 if ($run) {
   system("nice make -j $jobs -C $outdir 2> $outdir/logfile.txt");
