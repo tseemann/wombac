@@ -207,12 +207,12 @@ select STDOUT;
 msg("Your tree will contain", scalar(@id), "samples.");
 msg("Folder $outdir/ is now ready for analysis.");
 if ($run) {
-  system("nice make -j $jobs -C $outdir 2> $outdir/logfile.txt");
-  msg("Check $outdir/logfile.txt for errors.");
+  system("nice make -j $jobs -C $outdir 1> $outdir/log.out 2> $outdir/log.err");
+  msg("Check $outdir/log.out and $outdir/log.err for errors.");
   msg("Done.");
 }
 else {
-  msg("To run automagically, add the --run option to your command line.");
+  msg("To run automagically: use the --run command line option");
   msg("To run interactively: nice make -j $jobs -C $outdir");
   msg("To run and then log out: nohup nice make -j $jobs -C $outdir 1> $outdir/log.out 2> $outdir/log.err &");
 }
