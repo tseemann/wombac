@@ -86,7 +86,7 @@ if (-d $outdir) {
          : err("Output folder '$outdir' already exists. Remove it, or use --force");
 }
 else {
-  msg("Creatint output folder: $outdir");
+  msg("Creating output folder: $outdir");
   make_path($outdir);
 }
 
