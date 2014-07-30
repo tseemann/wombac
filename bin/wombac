@@ -13,7 +13,7 @@ use Data::Dumper;
 
 my $EXE = $FindBin::RealScript;
 my $HOMEDIR = $FindBin::Bin;
-my $VERSION = "1.3";
+my $VERSION = "1.4-testing";
 my $SYNOPSIS = "Fast bacterial core genome SNP trees";
 my $AUTHOR = 'Torsten Seemann <torsten.seemann@monash.edu>';
 my $URL = 'http://www.vicbioinformatics.com';
