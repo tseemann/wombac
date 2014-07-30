@@ -80,7 +80,8 @@ while (<DEPTH>) {
       $numcore++;
       print COREGFF join("\t", $seq, 'wombac', 'variation', 
                                $pos, $pos, '.', '.', 0, 
-                               sprintf("ID=SNP%06d", $numcore)),"\n";
+                               sprintf("ID=SNP%06d", $numcore).";note=$col"
+                        ),"\n";
     }
   }
 }
