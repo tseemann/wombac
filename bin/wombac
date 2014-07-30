@@ -42,7 +42,7 @@ $ENV{PATH} .= ":$HOMEDIR/binaries/$OPSYS:$HOMEDIR/binaries/noarch";
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # check for exes
 
-for my $exe (qw(bwa samtools vcfutils.pl wombac-vcf_filter wombac-shred_fasta wombac-nway make grep find date bgzip tabix)) {
+for my $exe (qw(bwa samtools vcfutils.pl wombac-vcf_filter wombac-shred_fasta wombac-nway tar make grep find date bgzip tabix)) {
   system("which $exe > /dev/null")==0 or err("Can not find '$exe' in PATH");
   msg("Found $exe - ok.");
 }
