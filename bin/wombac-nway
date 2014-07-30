@@ -32,6 +32,7 @@ for my $prefix (@ARGV) {
   }
   close VCF;
 }
+@id <=0 and die "Did not read any samples";
 printf STDERR "Read %d VCF files.\n", scalar(@id);
 
 my $BED = 'ref.bed';
