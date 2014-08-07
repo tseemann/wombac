@@ -22,7 +22,8 @@ my $OPSYS = $^O;
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # command line options
 
-my(@Options, $quiet, $outdir, $force, $jobs, $threads, $ref, $run, $distant, $noref);
+my(@Options, $quiet, $outdir, $force, $jobs, $threads, $ref, 
+             $run, $distant, $noref, $mapqual);
 setOptions();
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
@@ -163,8 +164,8 @@ for my $sample (@samples)
   "\n",
   "$id.bam: ref.fa.bwt @dep\n",
   "\tbwa mem $bwa_mem_opts -t \$(THREADS) ref.fa @reads",
-    " | samtools view -@ \$(THREADS) -S -b -u -T ref.fa -",
-    " | samtools sort -@ \$(THREADS) -m 1G - $id\n",
+    " | samtools view -@ \$(THREADS) -q $mapqual -S -b -u -T ref.fa -",
+    " | samtools sort -@ \$(THREADS) - $id\n",
 
   "$id.bam.bai: $id.bam\n",
   "\tsamtools index $id.bam $id.bam.bai\n",
@@ -321,6 +322,7 @@ sub setOptions {
     {OPT=>"jobs=i",    VAR=>\$jobs, DEFAULT=>0,    DESC=>"Number of parallel jobs to run [auto]"},
     {OPT=>"run!",      VAR=>\$run, DEFAULT=>0,     DESC=>"Run the analysis after setting up"},
     {OPT=>"distant!",  VAR=>\$distant, DEFAULT=>0, DESC=>"Use settings best for samples distant from reference (slower)"},
+    {OPT=>"mapqual=i",  VAR=>\$mapqual, DEFAULT=>60, DESC=>"Minimum mapping quality from BWA-MEM to keep"},
   );
 
   (!@ARGV) && (usage());
