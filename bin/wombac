@@ -163,7 +163,7 @@ for my $sample (@samples)
   print
   "\n",
   "$id.bam: ref.fa.bwt @dep\n",
-  "\tbwa mem $bwa_mem_opts -t \$(THREADS) ref.fa @reads",
+  "\tbwa mem $bwa_mem_opts -R '\@RG\tID:$id\tSM:$id' -t \$(THREADS) ref.fa @reads",
     " | samtools view -@ \$(THREADS) -q $mapqual -S -b -u -T ref.fa -",
     " | samtools sort -@ \$(THREADS) - $id\n",
 
