@@ -4,7 +4,7 @@ use strict;
 use Data::Dumper;
 use List::MoreUtils qw(any);
 
-my(@Options, $verbose, $mindepth, $noref, $output);
+my(@Options, $verbose, $mindepth, $maxdepth, $noref, $output);
 setOptions();
 
 $output or die "Please specify a prefix for output files, eg. --output snps";
@@ -63,7 +63,7 @@ open DEPTH, "samtools depth -b $BED -f bamfiles.txt |";
 while (<DEPTH>) {
   my($seq,$pos,@cov) = split m/\t/;
   print STDERR "\rChecking: $seq $pos" if $verbose;
-  if (any { $_ < $mindepth } @cov) {
+  if (any { $_ < $mindepth or $_ > $maxdepth } @cov) {
     # only positions covered by ALL genomes will be potential 'core' sites   
     delete $snp{$seq}{$pos};
   }
@@ -125,7 +125,8 @@ sub setOptions {
   @Options = (
     {OPT=>"help",    VAR=>\&usage,             DESC=>"This help"},
     {OPT=>"verbose!",  VAR=>\$verbose, DEFAULT=>0, DESC=>"Verbose output"},
-    {OPT=>"mindepth=i",  VAR=>\$mindepth, DEFAULT=>1, DESC=>"Minimum depth to count as covered"},
+    {OPT=>"mindepth=i",  VAR=>\$mindepth, DEFAULT=>1, DESC=>"Minimum depth to count as covered (in core)"},
+    {OPT=>"maxdepth=i",  VAR=>\$maxdepth, DEFAULT=>1E6, DESC=>"Maximum depth to count as covered (in core)"},
     {OPT=>"noref!",  VAR=>\$noref, DEFAULT=>0, DESC=>"Don't include reference in tree"},
     {OPT=>"output=s",  VAR=>\$output, DEFAULT=>'', DESC=>"Output prefix for .aln/.bed/.gff"},
   );
