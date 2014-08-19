@@ -14,7 +14,7 @@ use Data::Dumper;
 my $EXE = $FindBin::RealScript;
 my $BINDIR = $FindBin::Bin;
 my $VERSION = "2.0-alpha";
-my $SYNOPSIS = "Fast bacterial core genome SNP trees";
+my $SYNOPSIS = "Rapid bacterial core genome SNP alignments";
 my $AUTHOR = 'Torsten Seemann <torsten.seemann@monash.edu>';
 my $URL = 'http://www.vicbioinformatics.com';
 my $OPSYS = $^O;
