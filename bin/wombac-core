@@ -1,0 +1,205 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Data::Dumper;
+
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Float,Description="Genotype Quality, the Phred-scaled marginal (or unconditional) probability of the called genotype">
+##FORMAT=<ID=GL,Number=G,Type=Float,Description="Genotype Likelihood, log10-scaled likelihoods of the data given the called genotype for each possible genotype generated from the reference and alternate alleles given the sample ploidy">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+##FORMAT=<ID=RO,Number=1,Type=Integer,Description="Reference allele observation count">
+##FORMAT=<ID=QR,Number=1,Type=Integer,Description="Sum of quality of the reference observations">
+##FORMAT=<ID=AO,Number=A,Type=Integer,Description="Alternate allele observation count">
+##FORMAT=<ID=QA,Number=A,Type=Integer,Description="Sum of quality of the alternate observations">
+
+my(@Options, $verbose, $noref, $output, $vcf_fn, $mindepth, $minfrac);
+setOptions();
+
+$output or die "Please specify a prefix for output files, eg. --output snps";
+$vcf_fn or die "Please specify a input VCF file, eg. --vcf core.vcf";
+
+my @inc = @ARGV;
+map { s/\.bam$// } @inc;
+
+open BED, '>', "$output.bed" or die $!;
+
+open GFF, '>', "$output.gff" or die $!;
+print GFF "##gff-version 3\n";
+
+open ALN, '>', "$output.aln" or die $!;
+my %aln;
+
+my $count=0;
+my @id;
+my %index_of;
+
+open VCF, '-|', "gzip -f -c -d \Q$vcf_fn\E" or die "can not open VCF file: $vcf_fn";
+VARIANT:
+while (<VCF>) {
+  next if m/^##/;
+  chomp;
+
+  #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT   DATA1 DATA2 DATA3 ...
+  my($seq,$pos,undef,$ref,$alt,$qual,$filter,$info,$format,@data) = split m/\t/;
+  my $line = $_;
+
+  if ($seq eq '#CHROM') {
+    $data[0] eq 'unknown' and die "Your BAM files must have \@RG ID: tags.";
+    @id = @data;
+    @inc = @data unless @inc;
+    printf STDERR "Found %d samples in $vcf_fn: @id\n", scalar(@id);
+    printf STDERR "Will include %d of them: @inc\n", scalar(@inc);
+    map { $index_of{ $data[$_] } = $_ } (0 .. @data-1);
+#    print STDERR Dumper(\%index_of);
+    next;
+  }
+  
+  # not sure why this stuff gets through
+  next if $qual < 100;
+  
+  my $attr = vcf_tags_to_hash($info);
+
+  # ensure we are looking at a true single base substitution
+  next unless $attr->{TYPE} eq 'snp';
+  next unless $attr->{CIGAR} eq '1X';
+  next unless $attr->{NUMALT} == 1;
+  next unless $attr->{LEN} == 1;
+  
+  # this is how many samples we have data for
+#  next VARIANT unless $attr->{AN} >= @inc; 
+
+  # collate out data for this site
+  my %snp;
+  
+#  print "$line\n" if $attr->{ODDS} < 100;
+  
+  ID:
+  for my $id (@inc) {
+    exists $index_of{$id} or die "unknown sample '$id'";
+    my $gt = vcf_format_data_to_hash( $format, $data[$index_of{$id}] );
+    
+#    print Dumper($gt) if $attr->{ODDS} < 100;
+    
+    if ($gt and $gt->{DP} > $mindepth) {
+      if ($gt->{GT} eq '0') {
+        last ID if $gt->{RO} / $gt->{DP} < $minfrac;
+        $snp{$id}{ALLELE} = $ref;
+        $snp{$id}{COVERAGE} = $gt->{RO}.':'.$gt->{AO}."~".$gt->{GQ};
+      }
+      elsif ($gt->{GT} eq '1') {
+        last ID if $gt->{AO} / $gt->{DP} < $minfrac;
+        $snp{$id}{ALLELE} = $alt;
+        $snp{$id}{COVERAGE} = $gt->{AO}.':'.$gt->{RO}."~".$gt->{GQ};
+      }
+      else {
+        die "unkown genotype: $line";
+      }
+    }        
+  }
+  
+  # is this core?
+  next VARIANT unless scalar(keys %snp) == scalar(@inc);
+
+  unless ($noref) {
+    $snp{'Reference'}{ALLELE} = $ref;
+    $snp{'Reference'}{COVERAGE} = $attr->{DP}.":REF";
+    # this is temporary, we remove it below after the loops
+    unshift @inc, 'Reference'; 
+  }
+  
+  # make a string of all our allese
+  my $col = join('', map { $snp{$_}{ALLELE} } @inc);
+
+  # are all the ALT alleles the same? this can happen when --noref is being used!!!!
+  if ( $col =~ m/^(.)\1*$/ ) {
+#    print STDERR "Skipping clonal ALT due to --noref at $seq:$pos $ref vs $col\n";
+    next VARIANT;
+  }
+  
+  my $cov = join(' ', map { $snp{$_}{ALLELE}.'_'.$snp{$_}{COVERAGE} } @inc);  
+  map { $aln{$_} .= $snp{$_}{ALLELE} } @inc;
+
+  $count++;
+  my $label = sprintf "CORE%06d", $count;
+  print BED join("\t", $seq, $pos-1, $pos, $label), "\n";
+  print GFF join("\t", $seq, 'wombac', 'variation', $pos, $pos, qw(. . .),
+    "ID=$label;product=$col;note=$cov;ODDS=".$attr->{ODDS} ),"\n";
+
+  # remove now, it's done what it needed to do
+  shift @inc unless $noref;
+}
+close VCF;
+
+print STDERR "Output $count core SNPs.\n";
+
+for my $id (sort keys %aln) {
+  print ALN ">$id $count core SNPs in $id\n", $aln{$id}, "\n";
+} 
+
+#----------------------------------------------------------------------
+# name1=tag1;name2;name3=tag3 => HASH
+
+sub vcf_tags_to_hash {
+  my($s) = @_;
+  my @pairs = split m/;/, $s;
+  my %tag;
+  for my $p (@pairs) {
+    my @x = split m/=/, $p;
+    $tag{$x[0]} = $x[1];  # will be =>undef for bareword tags eg. INDEL;
+  }
+  return \%tag;
+}
+
+#----------------------------------------------------------------------
+# tag1:tag2:tag3 + value1:value2:value3 => HASH
+
+sub vcf_format_data_to_hash {
+  my($f,$d) = @_;
+  return if $d eq '.';
+  my @f = split m/:/, $f;
+  my @d = split m/:/, $d;
+  my %tag;
+  for my $i (0 .. $#f) {
+    $tag{ $f[$i] } = $d[$i];
+  }
+  return \%tag;
+}
+
+#----------------------------------------------------------------------
+# Option setting routines
+
+sub setOptions {
+  use Getopt::Long;
+
+  @Options = (
+    {OPT=>"help",    VAR=>\&usage,             DESC=>"This help"},
+    {OPT=>"verbose!",  VAR=>\$verbose, DEFAULT=>0, DESC=>"Verbose output"},
+    {OPT=>"mindepth=i",  VAR=>\$mindepth, DEFAULT=>10, DESC=>"Minimum depth to count as covered (in core)"},
+    {OPT=>"minfrac=f",  VAR=>\$minfrac, DEFAULT=>0.9, DESC=>"Minimum fraction of allele to be taken seriously"},
+    {OPT=>"vcf=s",  VAR=>\$vcf_fn, DEFAULT=>'core.vcf', DESC=>"Combined freebayes VCF 4.x file with all samples in DATA columns"},
+    {OPT=>"noref!",  VAR=>\$noref, DEFAULT=>0, DESC=>"Don't include reference in tree"},
+    {OPT=>"output=s",  VAR=>\$output, DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff"},
+  );
+
+  (!@ARGV) && (usage());
+
+  &GetOptions(map {$_->{OPT}, $_->{VAR}} @Options) || usage();
+
+  # Now setup default values.
+  foreach (@Options) {
+    if (defined($_->{DEFAULT}) && !defined(${$_->{VAR}})) {
+      ${$_->{VAR}} = $_->{DEFAULT};
+    }
+  }
+}
+
+sub usage {
+  print "Usage: $0 [options] --out prefix --vcf wombac.vcf [sample1 sample2 ... (default=ALL)]\n";
+  foreach (@Options) {
+    printf "  --%-13s %s%s.\n",$_->{OPT},$_->{DESC},
+           defined($_->{DEFAULT}) ? " (default '$_->{DEFAULT}')" : "";
+  }
+  exit(1);
+}
+ 
+#----------------------------------------------------------------------
