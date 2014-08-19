@@ -12,8 +12,8 @@ use Data::Dumper;
 # global variables
 
 my $EXE = $FindBin::RealScript;
-my $HOMEDIR = $FindBin::Bin;
-my $VERSION = "1.4-testing";
+my $BINDIR = $FindBin::Bin;
+my $VERSION = "2.0-alpha";
 my $SYNOPSIS = "Fast bacterial core genome SNP trees";
 my $AUTHOR = 'Torsten Seemann <torsten.seemann@monash.edu>';
 my $URL = 'http://www.vicbioinformatics.com';
@@ -23,7 +23,7 @@ my $OPSYS = $^O;
 # command line options
 
 my(@Options, $quiet, $outdir, $force, $jobs, $threads, $ref, 
-             $run, $distant, $noref, $mapqual);
+             $run, $noref, $mapqual, $mindepth, $minfrac);
 setOptions();
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
@@ -37,15 +37,21 @@ msg("Detected operating system: $OPSYS");
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
 # give access to bundled tools (at end of PATH)
 
-msg("Enabling bundled tools in: $HOMEDIR/binaries/{$OPSYS,noarch}");
-$ENV{PATH} .= ":$HOMEDIR/binaries/$OPSYS:$HOMEDIR/binaries/noarch";
+msg("Enabling bundled tools in: $BINDIR/binaries/{$OPSYS,noarch}");
+$ENV{PATH} .= ":$BINDIR/../binaries/$OPSYS:$BINDIR/../binaries/noarch";
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # check for exes
 
-for my $exe (qw(bwa samtools vcfutils.pl wombac-vcf_filter wombac-shred_fasta wombac-nway gzip tar make grep find date bgzip tabix)) {
+for my $exe (qw(bwa freebayes parallel freebayes-parallel fasta_generate_regions.py vcfuniq vcffirstheader vcfstreamsort cat gzip tar make grep bgzip tabix)) {
   system("which $exe > /dev/null")==0 or err("Can not find '$exe' in PATH");
   msg("Found $exe - ok.");
+}
+
+for my $script (qw(wombac-shred_fasta wombac-core)) {
+  my $path = "$BINDIR/$script";
+  -x $path or err("Missing wombac helper script: $path");
+  msg("Found $path - ok.");
 }
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
@@ -64,7 +70,7 @@ if ($threads < 1 and $jobs < 1) {
   $jobs = min( $nsamp, int($cores/$threads) );
 }
 $threads > 0 or err("Invalid --threads $threads");
-$jobs > 0 or err("Invalid --jobs $jobs");
+
 $threads*$jobs <= $cores or err("Using too many concurrent cores with $jobs jobs x $threads threads");
 msg("Found $nsamp samples. Will run concurrent $jobs jobs with $threads threads each.");
 
@@ -73,10 +79,15 @@ $ref or err("Please supply a reference FASTA file with --reference");
 $ref = File::Spec->rel2abs($ref);
 msg("Using reference genome: $ref");
 
-unless ($noref) {
-  unshift @samples, $ref;
-  msg("Added the --ref file to list of samples. Use --noref to prevent this.");
-}
+my $refsize = -s $ref;
+msg("Reference genomes is about $refsize bp.");
+my $chunksize = int($refsize / $cores / 3);
+msg("Will call SNPs in parallel chunks of $chunksize bp.");
+
+#unless ($noref) {
+#  unshift @samples, $ref;
+#  msg("Added the --ref file to list of samples. Use --noref to prevent this.");
+#}
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # prepare output folder
@@ -92,15 +103,10 @@ else {
 }
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
-# set options for --distant parameter
+# set options
 
 my $bwa_mem_opts = '';
 my $shred_opts = '';
-
-if ($distant) {
-  $bwa_mem_opts = '-k 11 -w 200 -B 2 -U 5 -L 2';
-  $shred_opts = '--readlen 50';
-}
 
 msg("Using BWA MEM options: $bwa_mem_opts");
 
@@ -108,22 +114,45 @@ msg("Using BWA MEM options: $bwa_mem_opts");
 # generate a makefile
 
 my %seen;
+my $LHS = '$@';
+my $RHS = '$<';
+my $CORES = '$(CORES)';
+my $THREADS = '$(THREADS)';
+my $CHUNKSIZE = '$(CHUNKSIZE)';
+my $REF = '$(REF)';
 
 open my $MF, '>', "$outdir/Makefile";
 select $MF;
 
-print
-"THREADS=$threads\n",
-".PHONY: all vcfindex\n",
-"\n",
-"all: ref.fa.bwt ref.fa.fai snps.aln snps.txt vcfindex ids.txt\n",
-"ref.fa: $ref\n",
-"\tcp -v '$ref' ref.fa\n",
-"ref.fa.fai: ref.fa\n",
-"\tsamtools faidx ref.fa\n",
-"ref.fa.bwt: ref.fa\n",
-"\tbwa index ref.fa\n",
-"";
+print qq~
+
+PATH := $BINDIR/../binaries/noarch:\${PATH}:$BINDIR/../binaries/$OPSYS
+
+THREADS=$threads
+CORES=$cores
+CHUNKSIZE=$chunksize
+REF=ref.fa
+
+.SUFFIXES: .bam .bai .vcf .vcf.gz .fa .fa.fai
+.PHONY: all
+
+%.fa.bwt: %.fa
+	bwa index $RHS
+
+%.fa.fai: %.fa
+	samtools faidx $RHS
+
+%.bam.bai: %.bam
+	samtools index $RHS
+
+%.vcf.gz: %.vcf
+	bgzip -c $RHS > $LHS && tabix -p vcf $LHS
+
+all: core.aln core.vcf.gz
+
+$REF: $ref
+	cp '$ref' $REF
+~;
 
 my @id;
 for my $sample (@samples) 
@@ -132,8 +161,8 @@ for my $sample (@samples)
   my $id = file_to_id($sample);
   $seen{$id}++ and err("ID '$id' already in use.");
   msg("Assigned ID: $id");
-  if ($id =~ m/^ref\.fa|^all$|^snps.aln$/) {
-    err("Sorry, you can't have samples with ref.fa/snps.aln/all in their name");
+  if ($id =~ m/^ref\.fa|^all$|^core.aln$/) {
+    err("Sorry, you can't have samples with ref.fa/core.aln/all in their name");
   }
 
   my @reads;
@@ -149,10 +178,10 @@ for my $sample (@samples)
     # sample which is a FILE
     # if .tgz then assume NCBI tarball of contigs, else assume a fasta file
     if ( $sample =~ m/(\.tgz|\.tar.gz)$/ ) {
-      @reads = ( "'<(tar -O -zxf $sample | wombac-shred_fasta $shred_opts --fastq)'" );
+      @reads = ( "'<(tar -O -zxf $sample | $BINDIR/wombac-shred_fasta $shred_opts --fastq)'" );
     }
     else {
-      @reads = ( "'<(gzip -c -d -f $sample | wombac-shred_fasta $shred_opts --fastq)'" );
+      @reads = ( "'<(gzip -c -d -f $sample | $BINDIR/wombac-shred_fasta $shred_opts --fastq)'" );
     }
     @dep = ($sample);
   }
@@ -160,54 +189,51 @@ for my $sample (@samples)
   msg("$id reads: @reads");
   push @id, $id;
 
+  # NOTE: samtools -f 3 includes these:
+  #  read paired
+  #  read mapped in proper pair
+  # NOTE: samtools -F 3840 below are SAM flags to exclude these:
+  #   read unmapped
+  #   not primary alignment
+  #   read fails platform/vendor quality checks
+  #   read is PCR or optical duplicate
+  #   supplementary alignment
+
   print
   "\n",
-  "$id.bam: ref.fa.bwt @dep\n",
-  "\tbwa mem $bwa_mem_opts -R '\@RG\tID:$id\tSM:$id' -t \$(THREADS) ref.fa @reads",
-    " | samtools view -@ \$(THREADS) -q $mapqual -S -b -u -T ref.fa -",
+  "$id.bam: $REF.bwt @dep\n",
+  "\tbwa mem $bwa_mem_opts -t \$(THREADS) -M -R '\@RG\tID:$id\tSM:$id' $REF @reads",
+    " | samtools view -@ \$(THREADS) -q $mapqual -F 3844 -S -b -u -T $REF -",
     " | samtools sort -@ \$(THREADS) - $id\n",
 
-  "$id.bam.bai: $id.bam\n",
-  "\tsamtools index $id.bam $id.bam.bai\n",
-
-  "$id.vcf.gz.tbi: $id.vcf.gz\n",
-  "\ttabix -p vcf \$\<\n",
-
-  "$id.vcf.gz: $id.vcf\n",
-  "\tbgzip -c \$\< > \$\@\n",
-
-  "$id.vcf: ref.fa $id.bam.bai $id.bam.flagstat\n",
-  "\tfreebayes -p 1 -i -X -u -f ref.fa --standard-filters --bam $id.bam",
-    " | wombac-vcf_filter",
-    " > $id.vcf\n",
-
-  "$id.bam.flagstat: $id.bam\n",
-  "\tsamtools flagstat $id.bam > $id.bam.flagstat\n",
-  "";
 }
 
-print "ids.txt: snps.aln\n";
-print "\trm -f ids.txt\n";
-print "\techo '$_' >> ids.txt\n" for @id;
+my @bam = map { "$_.bam" } @id;
+my @bai = map { "$_.bam.bai" } @id;
 
-my @vcfs = map { "$_.vcf" } @id;
-my @vcfidx = map { "$_.vcf.gz.tbi" } @id;
-my @bams = map { "$_.bam" } @id;
+my $fb_opt = "-p 1 -q 20 -m $mapqual -F $minfrac -C $mindepth --genotype-qualities -V";
+my $core_opt = $noref ? '--noref' : '';
 
-print "vcfindex: @vcfidx\n";
+print qq~
 
-print "snps.txt: @vcfs\n";
-print "\tgrep -vcH @vcfs > snps.txt\n";
+regions.txt: $REF.fai
+	fasta_generate_regions.py $RHS $CHUNKSIZE > $LHS
 
-print "snps.aln: @vcfs @bams\n";
-printf "\twombac-nway --output snps %s @id\n", ($noref ? '--noref' : '');
-print "\t\@echo 'Results are in $outdir/snps.aln - try: SplitsTree -i $outdir/snps.aln'\n";
+core.vcf: $REF regions.txt @bai
+	freebayes-parallel regions.txt $CORES -f $REF $fb_opt @bam > $LHS
+
+core.aln: core.vcf
+	$BINDIR/wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output core --vcf $RHS
+	\@echo 'Results are in $outdir/core.aln - try: SplitsTree -i $outdir/core.aln'
+
+~;
 
 select STDOUT;
 
 msg("Your tree will contain", scalar(@id), "samples.");
 msg("Folder $outdir/ is now ready for analysis.");
 if ($run) {
+  msg("Now running... please wait!");
   system("nice make -j $jobs -C $outdir 1> $outdir/log.out 2> $outdir/log.err");
   msg("Check $outdir/log.out and $outdir/log.err for errors.");
   msg("Done.");
@@ -236,7 +262,7 @@ sub file_to_id {
 sub find_read_files {
   my($dir) = @_;
   # we try looking for data files in this order with these patterns:
-  my @spec = qw(*.fastq.gz *.fastq *.fq.gz *.fq s_*.txt s_*.txt.gz);
+  my @spec = qw(*.fq.gz *.fastq.gz *.fq *.fastq s_*.txt s_*.txt.gz);
   my @file;
   for my $spec (@spec) {
     msg("Checking for $spec");
@@ -321,8 +347,9 @@ sub setOptions {
     {OPT=>"threads=i", VAR=>\$threads, DEFAULT=>0, DESC=>"Number of threads per job for bwa/samtools [auto]"},
     {OPT=>"jobs=i",    VAR=>\$jobs, DEFAULT=>0,    DESC=>"Number of parallel jobs to run [auto]"},
     {OPT=>"run!",      VAR=>\$run, DEFAULT=>0,     DESC=>"Run the analysis after setting up"},
-    {OPT=>"distant!",  VAR=>\$distant, DEFAULT=>0, DESC=>"Use settings best for samples distant from reference (slower)"},
-    {OPT=>"mapqual=i",  VAR=>\$mapqual, DEFAULT=>60, DESC=>"Minimum mapping quality from BWA-MEM to keep"},
+    {OPT=>"mapqual=i", VAR=>\$mapqual, DEFAULT=>60, DESC=>"Minimum mapping quality from BWA-MEM to keep"},
+    {OPT=>"mindepth=i",VAR=>\$mindepth, DEFAULT=>10, DESC=>"Minimum depth of coverage to consider"},
+    {OPT=>"minfrac=f",VAR=>\$minfrac, DEFAULT=>0.90, DESC=>"Minimum fraction supporting alternate/variant"},
   );
 
   (!@ARGV) && (usage());
