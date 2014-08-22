@@ -2,6 +2,7 @@
 use warnings;
 use strict;
 use Data::Dumper;
+use List::MoreUtils qw(all any);
 
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=GQ,Number=1,Type=Float,Description="Genotype Quality, the Phred-scaled marginal (or unconditional) probability of the called genotype">
@@ -21,6 +22,8 @@ $vcf_fn or die "Please specify a input VCF file, eg. --vcf core.vcf";
 my @inc = @ARGV;
 map { s/\.bam$// } @inc;
 
+open VCFOUT, '>', "$output.vcf" or die $!;  # just the _core_ SNPs
+
 open BED, '>', "$output.bed" or die $!;
 
 open GFF, '>', "$output.gff" or die $!;
@@ -30,18 +33,23 @@ open ALN, '>', "$output.aln" or die $!;
 my %aln;
 
 my $count=0;
+my $coresize=0;
 my @id;
 my %index_of;
 
-open VCF, '-|', "gzip -f -c -d \Q$vcf_fn\E" or die "can not open VCF file: $vcf_fn";
+open VCFIN, '-|', "gzip -f -c -d \Q$vcf_fn\E" or die "can not open VCF file: $vcf_fn";
 VARIANT:
-while (<VCF>) {
-  next if m/^##/;
+while (<VCFIN>) {
+  if (m/^##/) {
+    print VCFOUT $_;
+    next;
+  }
   chomp;
 
   #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT   DATA1 DATA2 DATA3 ...
   my($seq,$pos,undef,$ref,$alt,$qual,$filter,$info,$format,@data) = split m/\t/;
   my $line = $_;
+  print STDERR "Processed $. potential variant sites so far...\n" if $. % 10_000 == 0;
 
   if ($seq eq '#CHROM') {
     $data[0] eq 'unknown' and die "Your BAM files must have \@RG ID: tags.";
@@ -59,11 +67,21 @@ while (<VCF>) {
   
   my $attr = vcf_tags_to_hash($info);
 
-  # ensure we are looking at a true single base substitution
-  next unless $attr->{TYPE} eq 'snp';
-  next unless $attr->{CIGAR} eq '1X';
-  next unless $attr->{NUMALT} == 1;
-  next unless $attr->{LEN} == 1;
+  # ensure we are looking at a true single base substitutions
+  
+# OH BOY THIS IS SOOOO WRONG :-/
+#   next unless $attr->{TYPE} eq 'snp';
+#  next unless $attr->{CIGAR} eq '1X';
+#  next unless $attr->{NUMALT} == 1; 
+#  next unless $attr->{LEN} == 1;
+
+# SEE IF THIS IS BETTER
+  my @type = split m/,/, $attr->{TYPE};
+  my @alt = split m/,/, $alt;
+  my @genotype = ($ref, @alt);
+  next unless (all { m/^snp$/ } @type) or (all { m/^mnp$/ } @type);
+  my $varlen = length($ref);
+  next unless (all { length($_) == $varlen } );
   
   # this is how many samples we have data for
 #  next VARIANT unless $attr->{AN} >= @inc; 
@@ -78,23 +96,28 @@ while (<VCF>) {
     exists $index_of{$id} or die "unknown sample '$id'";
     my $gt = vcf_format_data_to_hash( $format, $data[$index_of{$id}] );
     
-#    print Dumper($gt) if $attr->{ODDS} < 100;
+#    print STDERR "genotype | @type | @genotype\n";
+    if ($gt) {
+      $snp{$id}{ALLELE} = $genotype[ $gt->{GT} ];
+    }
+    else {
+    }
     
-    if ($gt and $gt->{DP} > $mindepth) {
-      if ($gt->{GT} eq '0') {
-        last ID if $gt->{RO} / $gt->{DP} < $minfrac;
-        $snp{$id}{ALLELE} = $ref;
-        $snp{$id}{COVERAGE} = $gt->{RO}.':'.$gt->{AO}."~".$gt->{GQ};
-      }
-      elsif ($gt->{GT} eq '1') {
-        last ID if $gt->{AO} / $gt->{DP} < $minfrac;
-        $snp{$id}{ALLELE} = $alt;
-        $snp{$id}{COVERAGE} = $gt->{AO}.':'.$gt->{RO}."~".$gt->{GQ};
-      }
-      else {
-        die "unkown genotype: $line";
-      }
-    }        
+#    if ($gt and $gt->{DP} > $mindepth) {
+#      if ($gt->{GT} eq '0') {
+#        last ID if $gt->{RO} / $gt->{DP} < $minfrac;
+#        $snp{$id}{ALLELE} = $ref;
+#        $snp{$id}{COVERAGE} = $gt->{RO}.':'.$gt->{AO}."~".$gt->{GQ};
+#      }
+#      elsif ($gt->{GT} eq '1') {
+#        last ID if $gt->{AO} / $gt->{DP} < $minfrac;
+#        $snp{$id}{ALLELE} = $alt;
+#        $snp{$id}{COVERAGE} = $gt->{AO}.':'.$gt->{RO}."~".$gt->{GQ};
+#      }
+#      else {
+#        die "unkown genotype: $line";
+#      }
+#    }        
   }
   
   # is this core?
@@ -102,39 +125,54 @@ while (<VCF>) {
 
   unless ($noref) {
     $snp{'Reference'}{ALLELE} = $ref;
-    $snp{'Reference'}{COVERAGE} = $attr->{DP}.":REF";
+#    $snp{'Reference'}{COVERAGE} = $attr->{DP}.":REF";
     # this is temporary, we remove it below after the loops
     unshift @inc, 'Reference'; 
   }
   
   # make a string of all our allese
-  my $col = join('', map { $snp{$_}{ALLELE} } @inc);
+  my @col = map { $snp{$_}{ALLELE} } @inc;
+  my $col = join('-', @col);
 
   # are all the ALT alleles the same? this can happen when --noref is being used!!!!
-  if ( $col =~ m/^(.)\1*$/ ) {
-#    print STDERR "Skipping clonal ALT due to --noref at $seq:$pos $ref vs $col\n";
+  # FIXME: only test this when --noref being used?
+  if (all { $col[0] eq $_ } @col) {   
     next VARIANT;
   }
+# This no longer works with MNPSs!
+#  if ( $col =~ m/^(.)\1*$/ ) {
+##    print STDERR "Skipping clonal ALT due to --noref at $seq:$pos $ref vs $col\n";
+#    next VARIANT;
+#  }
   
-  my $cov = join(' ', map { $snp{$_}{ALLELE}.'_'.$snp{$_}{COVERAGE} } @inc);  
+#  my $cov = join(' ', map { $snp{$_}{ALLELE}.'_'.$snp{$_}{COVERAGE} } @inc);  
+#  my $cov = '';
+
+  # append to each sample's FASTA alignment string
   map { $aln{$_} .= $snp{$_}{ALLELE} } @inc;
 
   $count++;
+  $coresize += $varlen;
   my $label = sprintf "CORE%06d", $count;
-  print BED join("\t", $seq, $pos-1, $pos, $label), "\n";
-  print GFF join("\t", $seq, 'wombac', 'variation', $pos, $pos, qw(. . .),
-    "ID=$label;product=$col;note=$cov;ODDS=".$attr->{ODDS} ),"\n";
+  print BED join("\t", $seq, $pos-1, $pos+$varlen-1, $label), "\n";
+  print GFF join("\t", $seq, 'wombac', 'variation', $pos, $pos+$varlen-1, qw(. . .),
+    "ID=$label;product=$col"),"\n";
+  print VCFOUT $line;
 
   # remove now, it's done what it needed to do
   shift @inc unless $noref;
 }
-close VCF;
+close VCFIN;
 
-print STDERR "Output $count core SNPs.\n";
+print STDERR "Output $coresize bases from $count variant SNP/MNP sites.\n";
 
 for my $id (sort keys %aln) {
-  print ALN ">$id $count core SNPs in $id\n", $aln{$id}, "\n";
+  print ALN ">$id $coresize variant sites $id\n", $aln{$id}, "\n";
 } 
+
+print STDERR "Compressing & indexing $output.vcf\n";
+system("bgzip -c $output.vcf > $output.vcf.gz && tabix -p vcf $output.vcf.gz");
+print STDERR "Done.\n";
 
 #----------------------------------------------------------------------
 # name1=tag1;name2;name3=tag3 => HASH
@@ -176,9 +214,9 @@ sub setOptions {
     {OPT=>"verbose!",  VAR=>\$verbose, DEFAULT=>0, DESC=>"Verbose output"},
     {OPT=>"mindepth=i",  VAR=>\$mindepth, DEFAULT=>10, DESC=>"Minimum depth to count as covered (in core)"},
     {OPT=>"minfrac=f",  VAR=>\$minfrac, DEFAULT=>0.9, DESC=>"Minimum fraction of allele to be taken seriously"},
-    {OPT=>"vcf=s",  VAR=>\$vcf_fn, DEFAULT=>'core.vcf', DESC=>"Combined freebayes VCF 4.x file with all samples in DATA columns"},
+    {OPT=>"vcf=s",  VAR=>\$vcf_fn, DEFAULT=>'all.vcf', DESC=>"Combined freebayes VCF 4.x file with all samples in DATA columns"},
     {OPT=>"noref!",  VAR=>\$noref, DEFAULT=>0, DESC=>"Don't include reference in tree"},
-    {OPT=>"output=s",  VAR=>\$output, DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff"},
+    {OPT=>"output=s",  VAR=>\$output, DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff/.vcf"},
   );
 
   (!@ARGV) && (usage());
