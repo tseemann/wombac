@@ -23,7 +23,7 @@ my $OPSYS = $^O;
 # command line options
 
 my(@Options, $quiet, $outdir, $force, $jobs, $threads, $ref, 
-             $run, $noref, $mapqual, $mindepth, $minfrac);
+             $run, $noref, $basequal, $mapqual, $mindepth, $minfrac);
 setOptions();
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
@@ -211,7 +211,7 @@ for my $sample (@samples)
 my @bam = map { "$_.bam" } @id;
 my @bai = map { "$_.bam.bai" } @id;
 
-my $fb_opt = "-p 1 -q 20 -m $mapqual -F $minfrac -C $mindepth --genotype-qualities -V";
+my $fb_opt = "-p 1 -q $basequal -m $mapqual -F $minfrac -C $mindepth";
 my $core_opt = $noref ? '--noref' : '';
 
 print qq~
@@ -219,10 +219,10 @@ print qq~
 regions.txt: $REF.fai
 	fasta_generate_regions.py $RHS $CHUNKSIZE > $LHS
 
-core.vcf: $REF regions.txt @bai
+all.vcf: $REF regions.txt @bai
 	freebayes-parallel regions.txt $CORES -f $REF $fb_opt @bam > $LHS
 
-core.aln: core.vcf
+core.aln core.bed core.gff core.vcf: all.vcf
 	$BINDIR/wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output core --vcf $RHS
 	\@echo 'Results are in $outdir/core.aln - try: SplitsTree -i $outdir/core.aln'
 
@@ -347,6 +347,7 @@ sub setOptions {
     {OPT=>"threads=i", VAR=>\$threads, DEFAULT=>0, DESC=>"Number of threads per job for bwa/samtools [auto]"},
     {OPT=>"jobs=i",    VAR=>\$jobs, DEFAULT=>0,    DESC=>"Number of parallel jobs to run [auto]"},
     {OPT=>"run!",      VAR=>\$run, DEFAULT=>0,     DESC=>"Run the analysis after setting up"},
+    {OPT=>"basequal=i", VAR=>\$basequal, DEFAULT=>20, DESC=>"Minimum base quality to use in variant calling"},
     {OPT=>"mapqual=i", VAR=>\$mapqual, DEFAULT=>60, DESC=>"Minimum mapping quality from BWA-MEM to keep"},
     {OPT=>"mindepth=i",VAR=>\$mindepth, DEFAULT=>10, DESC=>"Minimum depth of coverage to consider"},
     {OPT=>"minfrac=f",VAR=>\$minfrac, DEFAULT=>0.90, DESC=>"Minimum fraction supporting alternate/variant"},
