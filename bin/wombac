@@ -22,7 +22,7 @@ my $OPSYS = $^O;
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # command line options
 
-my(@Options, $quiet, $outdir, $force, $cpus, $ref, 
+my(@Options, $quiet, $outdir, $force, $cpus, $ref, $prefix,
              $run, $noref, $basequal, $mapqual, $mindepth, $minfrac, $add);
 setOptions();
 
@@ -63,6 +63,8 @@ if ($add) {
   $ref and err("You can't use --ref when using --add");
   $ref = "$outdir/ref.fa";
   -r $ref or err("Can't find ref in existing project: $ref");
+  msg("Removing previous $prefix.* files");
+  unlink map { "$outdir/$prefix.$_" } qw(gff bed aln vcf vcf.gz vcf.gz.tbi);
 }
 
 my @samples = map { File::Spec->rel2abs($_) } @ARGV;
@@ -126,7 +128,7 @@ my $shred_opts = sprintf "--coverage %d", 2*$mindepth;
 my %seen;
 my $LHS = '$@';
 my $RHS = '$<';
-my $CORES = '$(CORES)';
+my $CPUS = '$(CPUS)';
 my $THREADS = '$(THREADS)';
 my $CHUNKSIZE = '$(CHUNKSIZE)';
 my $REF = '$(REF)';
@@ -139,12 +141,12 @@ print qq~
 PATH := $BINDIR/../binaries/noarch:\${PATH}:$BINDIR/../binaries/$OPSYS
 
 THREADS=$threads
-CORES=$cores
+CPUS=$cpus
 CHUNKSIZE=$chunksize
 REF=ref.fa
 
 .SUFFIXES: .bam .bai .vcf .vcf.gz .fa .fa.fai
-.PHONY: all
+.PHONY: all clean
 
 %.fa.bwt: %.fa
 	bwa index $RHS
@@ -158,7 +160,10 @@ REF=ref.fa
 %.vcf.gz: %.vcf
 	bgzip -c $RHS > $LHS && tabix -f -p vcf $LHS
 
-all: core.aln core.vcf.gz
+all: $prefix.vcf.gz
+
+clean:
+	rm -f $prefix.{aln,gff,bed,vcf,vcf.gz,vcf.gz.tbi}
 
 $REF: $ref
 	cp '$ref' $REF
@@ -178,8 +183,8 @@ for my $sample (@samples)
   my $id = file_to_id($sample);
   $seen{$id}++ and err("ID '$id' already in use.");
   msg("Assigned ID: $id");
-  if ($id =~ m/^ref\.fa|^all$|^core.aln$/) {
-    err("Sorry, you can't have samples with ref.fa/core.aln/all in their name");
+  if ($id =~ m/^ref\.fa|^all$|^$prefix.aln$/) {
+    err("Sorry, you can't have samples with ref.fa/$prefix.aln/all in their name");
   }
 
   my @reads;
@@ -222,7 +227,6 @@ for my $sample (@samples)
   "\tbwa mem $bwa_mem_opts -t \$(THREADS) -M -R '\@RG\tID:$id\tSM:$id' $REF @reads",
     " | samtools view -@ \$(THREADS) -q $mapqual -F 3844 -S -b -u -T $REF -",
     " | samtools sort -@ \$(THREADS) - $id\n",
-
 }
 
 my @bam = map { "$_.bam" } @id;
@@ -237,11 +241,11 @@ regions.txt: $REF.fai
 	fasta_generate_regions.py $RHS $CHUNKSIZE > $LHS
 
 all.vcf: $REF regions.txt @bai
-	freebayes-parallel regions.txt $CORES -f $REF $fb_opt @bam > $LHS
+	freebayes-parallel regions.txt $CPUS -f $REF $fb_opt @bam > $LHS
 
-core.aln core.bed core.gff core.vcf: all.vcf
-	$BINDIR/wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output core --vcf $RHS
-	\@echo 'Results are in $outdir/core.aln - try: SplitsTree -i $outdir/core.aln'
+#$prefix.aln $prefix.bed $prefix.gff $prefix.vcf: all.vcf
+$prefix.vcf: all.vcf
+	$BINDIR/wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output $prefix --vcf $RHS
 
 ~;
 
@@ -360,6 +364,7 @@ sub setOptions {
     {OPT=>"ref=s",     VAR=>\$ref, DEFAULT=>'',    DESC=>"Reference FASTA file"},
     {OPT=>"noref!",    VAR=>\$noref, DEFAULT=>0,   DESC=>"Exclude reference from tree"},
     {OPT=>"outdir=s",  VAR=>\$outdir, DEFAULT=>'', DESC=>"Output folder"},
+    {OPT=>"prefix=s",  VAR=>\$prefix, DEFAULT=>'core', DESC=>"Output filename prefix"},
     {OPT=>"force!",    VAR=>\$force, DEFAULT=>0,   DESC=>"Use existing output folder (can re-use calculations)"},
     {OPT=>"add!",      VAR=>\$add, DEFAULT=>'',    DESC=>"Add/append new samples to an existing folder"},
     {OPT=>"cpus=i",    VAR=>\$cpus, DEFAULT=>0,    DESC=>"Number of CPUs to use [auto]"},
