@@ -23,7 +23,7 @@ my $OPSYS = $^O;
 # command line options
 
 my(@Options, $quiet, $outdir, $force, $jobs, $threads, $ref, 
-             $run, $noref, $basequal, $mapqual, $mindepth, $minfrac);
+             $run, $noref, $basequal, $mapqual, $mindepth, $minfrac, $add);
 setOptions();
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
@@ -57,11 +57,24 @@ for my $script (qw(wombac-shred_fasta wombac-core)) {
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # type check parameters
 
+# special settings if --add is use
+if ($add) {
+  $force = 1;
+  $ref and err("You can't use --ref when using --add");
+  $ref = "$outdir/ref.fa";
+  -r $ref or err("Can't find ref in existing project: $ref");
+}
+
 my @samples = map { File::Spec->rel2abs($_) } @ARGV;
 @samples = grep { -d $_ or -f _ } @samples;
 my $nsamp = scalar(@samples);
-msg("You provided $nsamp samples.");
-$nsamp > 1 or err("You need to provide 2 or more valid readsets (folder) or contigs (file).");
+msg("You provided $nsamp readable samples.");
+if ($add) {
+  $nsamp >= 1 or err("Please provide at least one sample to add to set.");
+}
+else {
+  $nsamp > 1 or err("You need to provide 2 or more valid readsets (folder) or contigs (file).");
+}
 
 my $cores = num_cores();
 msg("Your computer has $cores cores.");
@@ -155,6 +168,13 @@ $REF: $ref
 ~;
 
 my @id;
+if ($add) {
+  @id = <$outdir/*.bam>;
+  map { s/.bam$// } @id;
+  map { s~^.*/~~ } @id;
+  msg("Adding samples to existing ",scalar(@id), "ones in $outdir: @id");
+}
+
 for my $sample (@samples) 
 {
   msg("Examining sample: $sample");
@@ -231,7 +251,7 @@ core.aln core.bed core.gff core.vcf: all.vcf
 select STDOUT;
 
 msg("Your tree will contain", scalar(@id), "samples.");
-msg("Folder $outdir/ is now ready for analysis.");
+msg("Folder $outdir/ is now set up for running.");
 if ($run) {
   msg("Now running... please wait!");
   system("nice make -j $jobs -C $outdir 1> $outdir/log.out 2> $outdir/log.err");
@@ -343,7 +363,8 @@ sub setOptions {
     {OPT=>"ref=s",     VAR=>\$ref, DEFAULT=>'',    DESC=>"Reference FASTA file"},
     {OPT=>"noref!",    VAR=>\$noref, DEFAULT=>0,   DESC=>"Exclude reference from tree"},
     {OPT=>"outdir=s",  VAR=>\$outdir, DEFAULT=>'', DESC=>"Output folder"},
-    {OPT=>"force!",    VAR=>\$force, DEFAULT=>0,   DESC=>"Re-use existing output folder (can re-use calculations)"},
+    {OPT=>"force!",    VAR=>\$force, DEFAULT=>0,   DESC=>"Use existing output folder (can re-use calculations)"},
+    {OPT=>"add!",      VAR=>\$add, DEFAULT=>'',    DESC=>"Add/append new samples to an existing folder"},
     {OPT=>"threads=i", VAR=>\$threads, DEFAULT=>0, DESC=>"Number of threads per job for bwa/samtools [auto]"},
     {OPT=>"jobs=i",    VAR=>\$jobs, DEFAULT=>0,    DESC=>"Number of parallel jobs to run [auto]"},
     {OPT=>"run!",      VAR=>\$run, DEFAULT=>0,     DESC=>"Run the analysis after setting up"},
