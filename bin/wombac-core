@@ -153,7 +153,7 @@ while (<VCFIN>) {
 
   $count++;
   $coresize += $varlen;
-  my $label = sprintf "CORE%06d", $count;
+  my $label = sprintf "%s%06d", $output, $count;
   print BED join("\t", $seq, $pos-1, $pos+$varlen-1, $label), "\n";
   print GFF join("\t", $seq, 'wombac', 'variation', $pos, $pos+$varlen-1, qw(. . .),
     "ID=$label;product=$col"),"\n";
