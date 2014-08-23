@@ -22,7 +22,7 @@ my $OPSYS = $^O;
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # command line options
 
-my(@Options, $quiet, $outdir, $force, $jobs, $threads, $ref, 
+my(@Options, $quiet, $outdir, $force, $cpus, $ref, 
              $run, $noref, $basequal, $mapqual, $mindepth, $minfrac, $add);
 setOptions();
 
@@ -78,13 +78,10 @@ else {
 
 my $cores = num_cores();
 msg("Your computer has $cores cores.");
-if ($threads < 1 and $jobs < 1) {
-  $threads = max( 1, int($cores/$nsamp) );
-  $jobs = min( $nsamp, int($cores/$threads) );
-}
-$threads > 0 or err("Invalid --threads $threads");
-
-$threads*$jobs <= $cores or err("Using too many concurrent cores with $jobs jobs x $threads threads");
+$cpus ||= $cores;
+msg("Will use $cpus cores.");
+my $threads = max( 1, int($cpus/$nsamp) );
+my $jobs = min( $nsamp, int($cpus/$threads) );
 msg("Found $nsamp samples. Will run concurrent $jobs jobs with $threads threads each.");
 
 $ref or err("Please supply a reference FASTA file with --reference");
@@ -365,8 +362,7 @@ sub setOptions {
     {OPT=>"outdir=s",  VAR=>\$outdir, DEFAULT=>'', DESC=>"Output folder"},
     {OPT=>"force!",    VAR=>\$force, DEFAULT=>0,   DESC=>"Use existing output folder (can re-use calculations)"},
     {OPT=>"add!",      VAR=>\$add, DEFAULT=>'',    DESC=>"Add/append new samples to an existing folder"},
-    {OPT=>"threads=i", VAR=>\$threads, DEFAULT=>0, DESC=>"Number of threads per job for bwa/samtools [auto]"},
-    {OPT=>"jobs=i",    VAR=>\$jobs, DEFAULT=>0,    DESC=>"Number of parallel jobs to run [auto]"},
+    {OPT=>"cpus=i",    VAR=>\$cpus, DEFAULT=>0,    DESC=>"Number of CPUs to use [auto]"},
     {OPT=>"run!",      VAR=>\$run, DEFAULT=>0,     DESC=>"Run the analysis after setting up"},
     {OPT=>"basequal=i", VAR=>\$basequal, DEFAULT=>20, DESC=>"Minimum base quality to use in variant calling"},
     {OPT=>"mapqual=i", VAR=>\$mapqual, DEFAULT=>60, DESC=>"Minimum mapping quality from BWA-MEM to keep"},
