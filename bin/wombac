@@ -156,7 +156,7 @@ REF=ref.fa
 	samtools index $RHS
 
 %.vcf.gz: %.vcf
-	bgzip -c $RHS > $LHS && tabix -p vcf $LHS
+	bgzip -c $RHS > $LHS && tabix -f -p vcf $LHS
 
 all: core.aln core.vcf.gz
 

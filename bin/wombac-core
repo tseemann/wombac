@@ -171,7 +171,7 @@ for my $id (sort keys %aln) {
 } 
 
 print STDERR "Compressing & indexing $output.vcf\n";
-system("bgzip -c $output.vcf > $output.vcf.gz && tabix -p vcf $output.vcf.gz");
+system("bgzip -c $output.vcf > $output.vcf.gz && tabix -f -p vcf $output.vcf.gz");
 print STDERR "Done.\n";
 
 #----------------------------------------------------------------------
