@@ -116,9 +116,9 @@ else {
 # set options
 
 my $bwa_mem_opts = '';
-my $shred_opts = '';
+msg("Using extra BWA MEM options: $bwa_mem_opts");
 
-msg("Using BWA MEM options: $bwa_mem_opts");
+my $shred_opts = sprintf "--coverage %d", 2*$mindepth;
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # generate a makefile
