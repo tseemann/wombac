@@ -157,7 +157,7 @@ while (<VCFIN>) {
   print BED join("\t", $seq, $pos-1, $pos+$varlen-1, $label), "\n";
   print GFF join("\t", $seq, 'wombac', 'variation', $pos, $pos+$varlen-1, qw(. . .),
     "ID=$label;product=$col"),"\n";
-  print VCFOUT $line;
+  print VCFOUT "$line\n";
 
   # remove now, it's done what it needed to do
   shift @inc unless $noref;
