@@ -271,7 +271,7 @@ sub file_to_id {
   my($path) = @_;
   my(undef,$dirs,$fname) = File::Spec->splitpath($path);
   if ($fname) {
-    $fname =~ s/\..*?$//; # remove extension
+    $fname =~ s/\.[^.]+?$//; # remove extension
     return $fname;
   }
   my @dir = File::Spec->splitdir($dirs);
