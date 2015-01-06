@@ -18,6 +18,7 @@ setOptions();
 
 $output or die "Please specify a prefix for output files, eg. --output snps";
 $vcf_fn or die "Please specify a input VCF file, eg. --vcf core.vcf";
+-r $vcf_fn or die "Can not read VCF file '$vcf_fn'";
 
 my @inc = @ARGV;
 map { s/\.bam$// } @inc;
@@ -56,97 +57,90 @@ while (<VCFIN>) {
     @id = @data;
     @inc = @data unless @inc;
     printf STDERR "Found %d samples in $vcf_fn: @id\n", scalar(@id);
+    unshift @inc, 'Reference' unless $noref;
     printf STDERR "Will include %d of them: @inc\n", scalar(@inc);
     map { $index_of{ $data[$_] } = $_ } (0 .. @data-1);
 #    print STDERR Dumper(\%index_of);
+    print VCFOUT "$line\n";
     next;
   }
+
+#  print STDERR ">>> $seq $pos $ref $alt $qual\n";
+#  print STDERR "\n<<< $line\n" if $verbose;
   
   # not sure why this stuff gets through
-  next if $qual < 100;
-  
+  if ($qual < 100) {
+    print STDERR "Skipping $seq:$pos as QUAL < 100\n" if $verbose;
+    next VARIANT;
+  }
+
+  # extract the common tags (not per sample)  
   my $attr = vcf_tags_to_hash($info);
 
-  # ensure we are looking at a true single base substitutions
-  
-# OH BOY THIS IS SOOOO WRONG :-/
-#   next unless $attr->{TYPE} eq 'snp';
-#  next unless $attr->{CIGAR} eq '1X';
-#  next unless $attr->{NUMALT} == 1; 
-#  next unless $attr->{LEN} == 1;
-
-# SEE IF THIS IS BETTER
   my @type = split m/,/, $attr->{TYPE};
   my @alt = split m/,/, $alt;
   my @genotype = ($ref, @alt);
-  next unless (all { m/^snp$/ } @type) or (all { m/^mnp$/ } @type);
+  unless ( (all { m/^snp$/ } @type) or (all { m/^mnp$/ } @type) ) {
+    print STDERR "Skipping $seq:$pos as alleles aren't all SNP or MNP type: @type\n" if $verbose;
+    next VARIANT;
+  }
   my $varlen = length($ref);
-  next unless (all { length($_) == $varlen } );
+  unless (all { length($_) == $varlen } @alt) {
+    print STDERR "Skipping $seq:$pos as ALTs differ in length to REF: $ref | @alt\n" if $verbose;
+    next VARIANT;
+  }
   
-  # this is how many samples we have data for
-#  next VARIANT unless $attr->{AN} >= @inc; 
-
   # collate out data for this site
   my %snp;
-  
-#  print "$line\n" if $attr->{ODDS} < 100;
+
+  $snp{'Reference'}{ALLELE} = $ref unless $noref;
   
   ID:
   for my $id (@inc) {
+    next if $id eq 'Reference';
     exists $index_of{$id} or die "unknown sample '$id'";
     my $gt = vcf_format_data_to_hash( $format, $data[$index_of{$id}] );
     
-#    print STDERR "genotype | @type | @genotype\n";
+    # print STDERR "genotype | @type | @genotype\n";
     if ($gt) {
       $snp{$id}{ALLELE} = $genotype[ $gt->{GT} ];
+      if ($gt->{DP} < $mindepth) {
+        print STDERR "Skipping $seq:$pos because $id DP $gt->{DP} < $mindepth\n" if $verbose;
+        next VARIANT;
+      }
+#      print STDERR "$seq:$pos\tGT=$gt->{GT}\tRO=$gt->{RO}\tAO=$gt->{AO}\n" if $verbose;
+      my @count = ($gt->{RO}, split m/,/, $gt->{AO});
+      my $frac = $count[ $gt->{GT} ] / $gt->{DP} ;
+      if ($frac < $minfrac) {
+        print STDERR "Skipping $seq:$pos because $id FRAC < $minfrac\n" if $verbose;
+        next VARIANT;
+      }
     }
     else {
+      # if we get here we have an empty "." FORMAT field for this sample
+      print STDERR "Skipping $seq:$pos because $id has no basecall\n" if $verbose;
+      next VARIANT;
     }
     
-#    if ($gt and $gt->{DP} > $mindepth) {
-#      if ($gt->{GT} eq '0') {
-#        last ID if $gt->{RO} / $gt->{DP} < $minfrac;
-#        $snp{$id}{ALLELE} = $ref;
-#        $snp{$id}{COVERAGE} = $gt->{RO}.':'.$gt->{AO}."~".$gt->{GQ};
-#      }
-#      elsif ($gt->{GT} eq '1') {
-#        last ID if $gt->{AO} / $gt->{DP} < $minfrac;
-#        $snp{$id}{ALLELE} = $alt;
-#        $snp{$id}{COVERAGE} = $gt->{AO}.':'.$gt->{RO}."~".$gt->{GQ};
-#      }
-#      else {
-#        die "unkown genotype: $line";
-#      }
-#    }        
   }
   
   # is this core?
-  next VARIANT unless scalar(keys %snp) == scalar(@inc);
-
-  unless ($noref) {
-    $snp{'Reference'}{ALLELE} = $ref;
-#    $snp{'Reference'}{COVERAGE} = $attr->{DP}.":REF";
-    # this is temporary, we remove it below after the loops
-    unshift @inc, 'Reference'; 
+  unless ( scalar(keys %snp) == scalar(@inc) ) {
+    print STDERR "Skipping $seq:$pos as it is non-core\n".Dumper(\%snp,\@inc) if $verbose;
+    next VARIANT;
   }
-  
+
   # make a string of all our allese
+#  print STDERR Dumper('COLUMN', \%snp, \@inc);
   my @col = map { $snp{$_}{ALLELE} } @inc;
   my $col = join('-', @col);
 
   # are all the ALT alleles the same? this can happen when --noref is being used!!!!
   # FIXME: only test this when --noref being used?
   if (all { $col[0] eq $_ } @col) {   
+    print STDERR "Skipping $seq:$pos because monomorphic: $col\n" if $verbose;
     next VARIANT;
   }
-# This no longer works with MNPSs!
-#  if ( $col =~ m/^(.)\1*$/ ) {
-##    print STDERR "Skipping clonal ALT due to --noref at $seq:$pos $ref vs $col\n";
-#    next VARIANT;
-#  }
-  
-#  my $cov = join(' ', map { $snp{$_}{ALLELE}.'_'.$snp{$_}{COVERAGE} } @inc);  
-#  my $cov = '';
 
   # append to each sample's FASTA alignment string
   map { $aln{$_} .= $snp{$_}{ALLELE} } @inc;
@@ -159,8 +153,8 @@ while (<VCFIN>) {
     "ID=$label;product=$col"),"\n";
   print VCFOUT "$line\n";
 
-  # remove now, it's done what it needed to do
-  shift @inc unless $noref;
+#  print STDERR ">>> $line\n" if $verbose;
+
 }
 close VCFIN;
 
@@ -173,6 +167,7 @@ for my $id (sort keys %aln) {
 print STDERR "Compressing & indexing $output.vcf\n";
 system("bgzip -c $output.vcf > $output.vcf.gz && tabix -f -p vcf $output.vcf.gz");
 print STDERR "Done.\n";
+
 
 #----------------------------------------------------------------------
 # name1=tag1;name2;name3=tag3 => HASH
