@@ -3,6 +3,7 @@ use warnings;
 use strict;
 use Data::Dumper;
 use List::MoreUtils qw(all any);
+use POSIX qw(strftime);
 
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=GQ,Number=1,Type=Float,Description="Genotype Quality, the Phred-scaled marginal (or unconditional) probability of the called genotype">
@@ -12,6 +13,9 @@ use List::MoreUtils qw(all any);
 ##FORMAT=<ID=QR,Number=1,Type=Integer,Description="Sum of quality of the reference observations">
 ##FORMAT=<ID=AO,Number=A,Type=Integer,Description="Alternate allele observation count">
 ##FORMAT=<ID=QA,Number=A,Type=Integer,Description="Sum of quality of the alternate observations">
+
+my @cmdline = ($0, @ARGV);
+my $username = $ENV{LOGNAME} || $ENV{USER} || getpwuid($<);
 
 my(@Options, $verbose, $noref, $output, $vcf_fn, $mindepth, $minfrac);
 setOptions();
@@ -29,6 +33,13 @@ open BED, '>', "$output.bed" or die $!;
 
 open GFF, '>', "$output.gff" or die $!;
 print GFF "##gff-version 3\n";
+
+open TXT, '>', "$output.txt" or die $!;
+print  TXT "Command\t@cmdline\n";
+printf TXT "DateTime\t%s\n", strftime("%a %b %e %H:%M:%S %Y", localtime);
+print  TXT "Username\t$username\n";
+print  TXT "MinDepth\t$mindepth\n";
+print  TXT "MinFrac\t$minfrac\n";
 
 open ALN, '>', "$output.aln" or die $!;
 my %aln;
@@ -59,6 +70,8 @@ while (<VCFIN>) {
     printf STDERR "Found %d samples in $vcf_fn: @id\n", scalar(@id);
     unshift @inc, 'Reference' unless $noref;
     printf STDERR "Will include %d of them: @inc\n", scalar(@inc);
+    printf TXT "NumSamples\t%d\n", scalar(@id);
+    print  TXT "SampleIDs\t@id\n";
     map { $index_of{ $data[$_] } = $_ } (0 .. @data-1);
 #    print STDERR Dumper(\%index_of);
     print VCFOUT "$line\n";
@@ -159,6 +172,8 @@ while (<VCFIN>) {
 close VCFIN;
 
 print STDERR "Output $coresize bases from $count variant SNP/MNP sites.\n";
+print TXT "CoreSNPs\t$coresize\n";
+print TXT "CoreSites\t$count\n";
 
 for my $id (sort keys %aln) {
   print ALN ">$id\n", $aln{$id}, "\n";
@@ -211,7 +226,7 @@ sub setOptions {
     {OPT=>"minfrac=f",  VAR=>\$minfrac, DEFAULT=>0.9, DESC=>"Minimum fraction of allele to be taken seriously"},
     {OPT=>"vcf=s",  VAR=>\$vcf_fn, DEFAULT=>'all.vcf', DESC=>"Combined freebayes VCF 4.x file with all samples in DATA columns"},
     {OPT=>"noref!",  VAR=>\$noref, DEFAULT=>0, DESC=>"Don't include reference in tree"},
-    {OPT=>"output=s",  VAR=>\$output, DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff/.vcf"},
+    {OPT=>"output=s",  VAR=>\$output, DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff/.vcf/.txt"},
   );
 
   (!@ARGV) && (usage());
