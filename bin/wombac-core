@@ -39,7 +39,7 @@ print  TXT "Command\t@cmdline\n";
 printf TXT "DateTime\t%s\n", strftime("%a %b %e %H:%M:%S %Y", localtime);
 print  TXT "Username\t$username\n";
 print  TXT "MinDepth\t$mindepth\n";
-print  TXT "MinFrac\t$minfrac\n";
+print  TXT "MinFraction\t$minfrac\n";
 
 open ALN, '>', "$output.aln" or die $!;
 my %aln;
@@ -70,8 +70,8 @@ while (<VCFIN>) {
     printf STDERR "Found %d samples in $vcf_fn: @id\n", scalar(@id);
     unshift @inc, 'Reference' unless $noref;
     printf STDERR "Will include %d of them: @inc\n", scalar(@inc);
-    printf TXT "NumSamples\t%d\n", scalar(@id);
-    print  TXT "SampleIDs\t@id\n";
+    printf TXT "NumSamples\t%d\n", scalar(@inc);
+    print  TXT "Samples\t@id\n";
     map { $index_of{ $data[$_] } = $_ } (0 .. @data-1);
 #    print STDERR Dumper(\%index_of);
     print VCFOUT "$line\n";
@@ -172,8 +172,8 @@ while (<VCFIN>) {
 close VCFIN;
 
 print STDERR "Output $coresize bases from $count variant SNP/MNP sites.\n";
-print TXT "CoreSNPs\t$coresize\n";
 print TXT "CoreSites\t$count\n";
+print TXT "CoreSNPs\t$coresize\n";
 
 for my $id (sort keys %aln) {
   print ALN ">$id\n", $aln{$id}, "\n";

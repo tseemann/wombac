@@ -64,7 +64,7 @@ if ($add) {
   $ref = "$outdir/ref.fa";
   -r $ref or err("Can't find ref in existing project: $ref");
   msg("Removing previous $prefix.* files");
-  unlink map { "$outdir/$prefix.$_" } qw(gff bed aln vcf vcf.gz vcf.gz.tbi);
+  unlink map { "$outdir/$prefix.$_" } qw(txt gff bed aln vcf vcf.gz vcf.gz.tbi);
 }
 
 my @samples = map { File::Spec->rel2abs($_) } @ARGV;
@@ -161,9 +161,10 @@ REF=ref.fa
 	bgzip -c $RHS > $LHS && tabix -f -p vcf $LHS
 
 all: $prefix.vcf.gz
+	rm -f regions.txt
 
 clean:
-	rm -f $prefix.{aln,gff,bed,vcf,vcf.gz,vcf.gz.tbi}
+	rm -f $prefix.{txt,aln,gff,bed,vcf,vcf.gz,vcf.gz.tbi}
 
 $REF: $ref
 	cp '$ref' $REF
