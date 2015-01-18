@@ -161,7 +161,7 @@ close VCFIN;
 print STDERR "Output $coresize bases from $count variant SNP/MNP sites.\n";
 
 for my $id (sort keys %aln) {
-  print ALN ">$id $coresize variant sites $id\n", $aln{$id}, "\n";
+  print ALN ">$id\n", $aln{$id}, "\n";
 } 
 
 print STDERR "Compressing & indexing $output.vcf\n";
