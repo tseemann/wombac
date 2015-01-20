@@ -244,7 +244,7 @@ sub setOptions {
     {OPT=>"output=s",  VAR=>\$output, DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff/.vcf/.txt"},
   );
 
-  (!@ARGV) && (usage());
+  # (!@ARGV) && (usage());
 
   &GetOptions(map {$_->{OPT}, $_->{VAR}} @Options) || usage();
 
