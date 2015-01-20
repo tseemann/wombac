@@ -17,12 +17,15 @@ use POSIX qw(strftime);
 my @cmdline = ($0, @ARGV);
 my $username = $ENV{LOGNAME} || $ENV{USER} || getpwuid($<);
 
-my(@Options, $verbose, $noref, $output, $vcf_fn, $mindepth, $minfrac);
+my(@Options, $verbose, $noref, $output, $vcf_fn, $mindepth, $minfrac, 
+             $noncore, $missym, $gapsym);
 setOptions();
 
 $output or die "Please specify a prefix for output files, eg. --output snps";
 $vcf_fn or die "Please specify a input VCF file, eg. --vcf core.vcf";
 -r $vcf_fn or die "Can not read VCF file '$vcf_fn'";
+length($missym)==1 or die "--missym value must be a single character";
+length($gapsym)==1 or die "--gapsym value must be a single character";
 
 my @inc = @ARGV;
 map { s/\.bam$// } @inc;
@@ -93,7 +96,7 @@ while (<VCFIN>) {
 
   my @type = split m/,/, $attr->{TYPE};
   my @alt = split m/,/, $alt;
-  my @genotype = ($ref, @alt);
+  my @genotype = ($ref, @alt, 'N');
   unless ( (all { m/^snp$/ } @type) or (all { m/^mnp$/ } @type) ) {
     print STDERR "Skipping $seq:$pos as alleles aren't all SNP or MNP type: @type\n" if $verbose;
     next VARIANT;
@@ -114,7 +117,7 @@ while (<VCFIN>) {
     next if $id eq 'Reference';
     exists $index_of{$id} or die "unknown sample '$id'";
     my $gt = vcf_format_data_to_hash( $format, $data[$index_of{$id}] );
-    
+
     # print STDERR "genotype | @type | @genotype\n";
     if ($gt) {
       $snp{$id}{ALLELE} = $genotype[ $gt->{GT} ];
@@ -132,8 +135,14 @@ while (<VCFIN>) {
     }
     else {
       # if we get here we have an empty "." FORMAT field for this sample
-      print STDERR "Skipping $seq:$pos because $id has no basecall\n" if $verbose;
-      next VARIANT;
+      if ($noncore) {
+        # create a appropriate lengthed "N" allele
+        $snp{$id}{ALLELE} = ($missym)x$varlen;
+      }
+      else {
+        print STDERR "Skipping $seq:$pos because $id has no basecall\n" if $verbose;
+        next VARIANT;
+      }
     }
     
   }
@@ -184,7 +193,7 @@ print  NEX "END;\n\n";
 
 print  NEX "BEGIN CHARACTERS;\n";
 printf NEX "\tDIMENSIONS NCHAR=%d;\n", length($aln{$id[0]});
-print  NEX "\tFORMAT DATATYPE=dna INTERLEAVE=no MISSING=N GAP=-;\n";
+print  NEX "\tFORMAT DATATYPE=dna INTERLEAVE=no MISSING=$missym GAP=$gapsym;\n";
 print  NEX "\tMATRIX\n";
 
 for my $id (sort keys %aln) {
@@ -242,6 +251,9 @@ sub setOptions {
     {OPT=>"vcf=s",  VAR=>\$vcf_fn, DEFAULT=>'all.vcf', DESC=>"Combined freebayes VCF 4.x file with all samples in DATA columns"},
     {OPT=>"noref!",  VAR=>\$noref, DEFAULT=>0, DESC=>"Don't include reference in tree"},
     {OPT=>"output=s",  VAR=>\$output, DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff/.vcf/.txt"},
+    {OPT=>"noncore!",  VAR=>\$noncore, DEFAULT=>0, DESC=>"Include non-core sites"},
+    {OPT=>"missym=s",  VAR=>\$missym, DEFAULT=>'N', DESC=>"Symbol for missing value"},
+    {OPT=>"gapsym=s",  VAR=>\$gapsym, DEFAULT=>'-', DESC=>"Symbol for gap"},
   );
 
   # (!@ARGV) && (usage());
