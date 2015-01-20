@@ -41,6 +41,7 @@ print  TXT "Username\t$username\n";
 print  TXT "MinDepth\t$mindepth\n";
 print  TXT "MinFraction\t$minfrac\n";
 
+open NEX, '>', "$output.nex" or die $!;
 open ALN, '>', "$output.aln" or die $!;
 my %aln;
 
@@ -175,9 +176,23 @@ print STDERR "Output $coresize bases from $count variant SNP/MNP sites.\n";
 print TXT "CoreSites\t$count\n";
 print TXT "CoreSNPs\t$coresize\n";
 
+print  NEX "#NEXUS\n\n";
+print  NEX "BEGIN TAXA;\n";
+printf NEX "\tDIMENSIONS NTAX=%d;\n", scalar(keys %aln);
+print  NEX "\tTAXLABELS ", join(' ', sort keys %aln), ";\n";
+print  NEX "END;\n\n";
+
+print  NEX "BEGIN CHARACTERS;\n";
+printf NEX "\tDIMENSIONS NCHAR=%d;\n", length($aln{$id[0]});
+print  NEX "\tFORMAT DATATYPE=dna INTERLEAVE=no MISSING=N GAP=-;\n";
+print  NEX "\tMATRIX\n";
+
 for my $id (sort keys %aln) {
   print ALN ">$id\n", $aln{$id}, "\n";
+  print NEX "$id\t", $aln{$id}, "\n";
 } 
+print NEX "\t;\n";
+print NEX "END;\n";
 
 print STDERR "Compressing & indexing $output.vcf\n";
 system("bgzip -c $output.vcf > $output.vcf.gz && tabix -f -p vcf $output.vcf.gz");
