@@ -43,7 +43,7 @@ $ENV{PATH} .= ":$BINDIR/../binaries/$OPSYS:$BINDIR/../binaries/noarch";
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # check for exes
 
-for my $exe (qw(bwa freebayes parallel freebayes-parallel fasta_generate_regions.py vcfuniq vcffirstheader vcfstreamsort cat gzip tar make grep bgzip tabix)) {
+for my $exe (qw(bwa freebayes parallel freebayes-parallel fasta_generate_regions.py vcfuniq vcffirstheader vcfstreamsort cat gzip tar make grep bgzip tabix FastTreeMP)) {
   system("which $exe > /dev/null")==0 or err("Can not find '$exe' in PATH");
   msg("Found $exe - ok.");
 }
@@ -132,6 +132,7 @@ my $CPUS = '$(CPUS)';
 my $THREADS = '$(THREADS)';
 my $CHUNKSIZE = '$(CHUNKSIZE)';
 my $REF = '$(REF)';
+my $REGIONS = 'all.regions';
 
 open my $MF, '>', "$outdir/Makefile";
 select $MF;
@@ -145,8 +146,9 @@ CPUS=$cpus
 CHUNKSIZE=$chunksize
 REF=ref.fa
 
-.SUFFIXES: .bam .bai .vcf .vcf.gz .fa .fa.fai
-.PHONY: all clean
+.SUFFIXES: .bam .bai .vcf .vcf.gz .fa .fa.fai .aln .tree
+.PHONY: all clean cleanall
+.PRECIOUS: $prefix.vcf
 
 %.fa.bwt: %.fa
 	bwa index $RHS
@@ -160,11 +162,19 @@ REF=ref.fa
 %.vcf.gz: %.vcf
 	bgzip -c $RHS > $LHS && tabix -f -p vcf $LHS
 
-all: $prefix.vcf.gz
-	rm -f regions.txt
+%.tree: %.aln
+	FastTreeMP -gtr -nt $RHS > $LHS
+
+all: $prefix.vcf.gz $prefix.tree
+
+dummy:
+	echo
 
 clean:
-	rm -f $prefix.{txt,aln,gff,bed,vcf,vcf.gz,vcf.gz.tbi}
+	rm -f $prefix.{txt,aln,nex,tree,gff,bed,vcf,vcf.gz,vcf.gz.tbi}
+
+cleanall: clean
+	rm -f all.vcf $REGIONS *.bam *.bam.bai $REF.*
 
 $REF: $ref
 	cp '$ref' $REF
@@ -239,15 +249,16 @@ my $core_opt = $noref ? '--noref' : '';
 
 print qq~
 
-regions.txt: $REF.fai
+
+$REGIONS: $REF.fai
 	fasta_generate_regions.py $RHS $CHUNKSIZE > $LHS
 
-all.vcf: $REF regions.txt @bai
-	freebayes-parallel regions.txt $CPUS -f $REF $fb_opt @bam > $LHS
+all.vcf: $REF $REGIONS @bai
+	freebayes-parallel $REGIONS $CPUS -f $REF $fb_opt @bam > $LHS
 
-#$prefix.aln $prefix.bed $prefix.gff $prefix.vcf: all.vcf
-$prefix.vcf: all.vcf
-	$BINDIR/wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output $prefix --vcf $RHS
+%.vcf %.bed %.gff %.aln %.txt %.nex: all.vcf
+	wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output \$\* --vcf $RHS
+
 
 ~;
 
