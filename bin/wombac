@@ -380,7 +380,7 @@ sub setOptions {
     {OPT=>"prefix=s",  VAR=>\$prefix, DEFAULT=>'core', DESC=>"Output filename prefix"},
     {OPT=>"force!",    VAR=>\$force, DEFAULT=>0,   DESC=>"Use existing output folder (can re-use calculations)"},
     {OPT=>"add!",      VAR=>\$add, DEFAULT=>'',    DESC=>"Add/append new samples to an existing folder"},
-    {OPT=>"cpus=i",    VAR=>\$cpus, DEFAULT=>0,    DESC=>"Number of CPUs to use [auto]"},
+    {OPT=>"cpus=i",    VAR=>\$cpus, DEFAULT=>8,    DESC=>"Number of CPUs to use"},
     {OPT=>"run!",      VAR=>\$run, DEFAULT=>0,     DESC=>"Run the analysis after setting up"},
     {OPT=>"basequal=i", VAR=>\$basequal, DEFAULT=>20, DESC=>"Minimum base quality to use in variant calling"},
     {OPT=>"mapqual=i", VAR=>\$mapqual, DEFAULT=>60, DESC=>"Minimum mapping quality from BWA-MEM to keep"},
