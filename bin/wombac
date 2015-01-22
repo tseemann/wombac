@@ -13,10 +13,10 @@ use Data::Dumper;
 
 my $EXE = $FindBin::RealScript;
 my $BINDIR = $FindBin::Bin;
-my $VERSION = "2.0-alpha";
+my $VERSION = "2.0-beta";
 my $SYNOPSIS = "Rapid bacterial core genome SNP alignments";
-my $AUTHOR = 'Torsten Seemann <torsten.seemann@monash.edu>';
-my $URL = 'http://www.vicbioinformatics.com';
+my $AUTHOR = 'Torsten Seemann <torsten@seemann.id.au>';
+my $URL = 'https://github.com/Victorian-Bioinformatics-Consortium/wombac';
 my $OPSYS = $^O;
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
@@ -351,9 +351,9 @@ sub show_citation {
   
 If you use $EXE in your work, please cite:
 
-    Seemann T (2013)
+    Seemann T (2015)
     $EXE: $SYNOPSIS
-    http://github.com/Victorian-Bioinformatics-Consortium/wombac
+    $URL
     
 Thank you.
 
