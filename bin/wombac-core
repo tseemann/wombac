@@ -269,7 +269,7 @@ sub setOptions {
 }
 
 sub usage {
-  print "Usage: $0 [options] --out prefix --vcf wombac.vcf [sample1 sample2 ... (default=ALL)]\n";
+  print "Usage: $0 [options] --out prefix --vcf all.vcf [sample1 sample2 ... (default=ALL)]\n";
   foreach (@Options) {
     printf "  --%-13s %s%s.\n",$_->{OPT},$_->{DESC},
            defined($_->{DEFAULT}) ? " (default '$_->{DEFAULT}')" : "";
