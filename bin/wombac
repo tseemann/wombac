@@ -257,7 +257,7 @@ all.vcf: $REF $REGIONS @bai
 	freebayes-parallel $REGIONS $CPUS -f $REF $fb_opt @bam > $LHS
 
 %.vcf %.bed %.gff %.aln %.txt %.nex: all.vcf
-	wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output \$\* --vcf $RHS
+	$BINDIR/wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output \$\* --vcf $RHS
 
 
 ~;
