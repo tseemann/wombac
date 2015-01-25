@@ -256,7 +256,7 @@ sub setOptions {
     {OPT=>"gapsym=s",  VAR=>\$gapsym, DEFAULT=>'-', DESC=>"Symbol for gap"},
   );
 
-  # (!@ARGV) && (usage());
+  (!@ARGV) && (usage());
 
   &GetOptions(map {$_->{OPT}, $_->{VAR}} @Options) || usage();
 
