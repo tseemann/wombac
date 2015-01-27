@@ -64,7 +64,7 @@ if ($add) {
   $ref = "$outdir/ref.fa";
   -r $ref or err("Can't find ref in existing project: $ref");
   msg("Removing previous $prefix.* files");
-  unlink map { "$outdir/$prefix.$_" } qw(txt gff bed aln vcf vcf.gz vcf.gz.tbi);
+  unlink map { "$outdir/$prefix.$_" } qw(csv txt gff bed aln vcf vcf.gz vcf.gz.tbi);
 }
 
 my @samples = map { File::Spec->rel2abs($_) } @ARGV;
@@ -171,7 +171,7 @@ dummy:
 	echo
 
 clean:
-	rm -f $prefix.{txt,aln,nex,tree,gff,bed,vcf,vcf.gz,vcf.gz.tbi}
+	rm -f $prefix.{csv,txt,aln,nex,tree,gff,bed,vcf,vcf.gz,vcf.gz.tbi}
 
 cleanall: clean
 	rm -f all.vcf $REGIONS *.bam *.bam.bai $REF.*
@@ -256,7 +256,7 @@ $REGIONS: $REF.fai
 all.vcf: $REF $REGIONS @bai
 	freebayes-parallel $REGIONS $CPUS -f $REF $fb_opt @bam > $LHS
 
-%.vcf %.bed %.gff %.aln %.txt %.nex: all.vcf
+%.vcf %.bed %.gff %.aln %.txt %.csv %.nex: all.vcf
 	$BINDIR/wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output \$\* --vcf $RHS
 
 

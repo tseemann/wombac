@@ -14,6 +14,7 @@ use POSIX qw(strftime);
 ##FORMAT=<ID=AO,Number=A,Type=Integer,Description="Alternate allele observation count">
 ##FORMAT=<ID=QA,Number=A,Type=Integer,Description="Sum of quality of the alternate observations">
 
+my $SEP = ',';
 my @cmdline = ($0, @ARGV);
 my $username = $ENV{LOGNAME} || $ENV{USER} || getpwuid($<);
 
@@ -36,6 +37,8 @@ open BED, '>', "$output.bed" or die $!;
 
 open GFF, '>', "$output.gff" or die $!;
 print GFF "##gff-version 3\n";
+
+open CSV, '>', "$output.csv" or die $!;
 
 open TXT, '>', "$output.txt" or die $!;
 print  TXT "Command\t@cmdline\n";
@@ -76,6 +79,8 @@ while (<VCFIN>) {
     printf STDERR "Will include %d of them: @inc\n", scalar(@inc);
     printf TXT "NumSamples\t%d\n", scalar(@inc);
     print  TXT "Samples\t@id\n";
+    # the first @inc is the bases, the second @inc is the evidence
+    print CSV join($SEP, '#SEQ', 'POS', 'TYPE', @inc, @inc, 'FEATURE'),"\n";
     map { $index_of{ $data[$_] } = $_ } (0 .. @data-1);
 #    print STDERR Dumper(\%index_of);
     print VCFOUT "$line\n";
@@ -110,7 +115,9 @@ while (<VCFIN>) {
   # collate out data for this site
   my %snp;
 
-  $snp{'Reference'}{ALLELE} = $ref unless $noref;
+  unless ($noref) {
+    $snp{'Reference'} = { ALLELE => $ref, EVIDENCE => 'REF' };
+  }
   
   ID:
   for my $id (@inc) {
@@ -132,12 +139,15 @@ while (<VCFIN>) {
         print STDERR "Skipping $seq:$pos because $id FRAC < $minfrac\n" if $verbose;
         next VARIANT;
       }
+      $snp{$id}{EVIDENCE} = $count[$gt->{GT}]."/".$gt->{DP};
+      # $snp{$id}{EVIDENCE} = sprintf "%.0f%%", 100*$frac;
     }
     else {
       # if we get here we have an empty "." FORMAT field for this sample
       if ($noncore) {
         # create a appropriate lengthed "N" allele
         $snp{$id}{ALLELE} = ($missym)x$varlen;
+        $snp{$id}{EVIDENCE} = '';
       }
       else {
         print STDERR "Skipping $seq:$pos because $id has no basecall\n" if $verbose;
@@ -175,6 +185,12 @@ while (<VCFIN>) {
   print GFF join("\t", $seq, 'wombac', 'variation', $pos, $pos+$varlen-1, qw(. . .),
     "ID=$label;product=$col"),"\n";
   print VCFOUT "$line\n";
+
+  print CSV join($SEP, $seq, $pos, $type[0], 
+      (map { $snp{$_}{ALLELE} } @inc), 
+      (map { $snp{$_}{EVIDENCE} } @inc),
+      'no annotations available',
+    ), "\n";
 
 #  print STDERR ">>> $line\n" if $verbose;
 
@@ -250,7 +266,7 @@ sub setOptions {
     {OPT=>"minfrac=f",  VAR=>\$minfrac, DEFAULT=>0.9, DESC=>"Minimum fraction of allele to be taken seriously"},
     {OPT=>"vcf=s",      VAR=>\$vcf_fn,  DEFAULT=>'all.vcf', DESC=>"Combined freebayes VCF 4.x file with all samples in DATA columns"},
     {OPT=>"noref!",     VAR=>\$noref,   DEFAULT=>0, DESC=>"Don't include reference in analysis"},
-    {OPT=>"output=s",   VAR=>\$output,  DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff/.vcf/.txt"},
+    {OPT=>"output=s",   VAR=>\$output,  DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff/.vcf/.txt/.csv"},
     {OPT=>"noncore!",   VAR=>\$noncore, DEFAULT=>0, DESC=>"Include non-core sites"},
     {OPT=>"missym=s",   VAR=>\$missym,  DEFAULT=>'N', DESC=>"Symbol for missing value"},
     {OPT=>"gapsym=s",   VAR=>\$gapsym,  DEFAULT=>'-', DESC=>"Symbol for gap"},
