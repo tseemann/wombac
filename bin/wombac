@@ -13,7 +13,7 @@ use Data::Dumper;
 
 my $EXE = $FindBin::RealScript;
 my $BINDIR = $FindBin::Bin;
-my $VERSION = "2.0-beta";
+my $VERSION = "2.0";
 my $SYNOPSIS = "Rapid bacterial core genome SNP alignments";
 my $AUTHOR = 'Torsten Seemann <torsten@seemann.id.au>';
 my $URL = 'https://github.com/Victorian-Bioinformatics-Consortium/wombac';

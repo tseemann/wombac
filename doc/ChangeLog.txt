@@ -2,12 +2,23 @@
 TODO
 ----
 * timing information
-* require-all option?
-* make clean option
-* make a SNP report summary
 * report how many samples were skipped and list them
 * add .depth files
 * put into folders instead of all in one dir
+
+Version 2.0
+-----------
+* Major restructure
+  - joint SNP calling with freebayes (parallel)
+  - proper samtools filter and bwa flags
+* Critical bug fixes
+  - incorrect assumption about freebayes mindepth/minfrac
+  - false core SNPs when including reference
+* New features
+  - non-core SNPs too
+  - run FastTree at end
+  - NEXUS output
+  - CSV table output
 
 Version 1.3
 -----------
