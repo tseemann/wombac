@@ -243,7 +243,7 @@ for my $sample (@samples)
 my @bam = map { "$_.bam" } @id;
 my @bai = map { "$_.bam.bai" } @id;
 
-my $fb_opt = "-p 1 -q $basequal -m $mapqual -F $minfrac -C $mindepth";
+my $fb_opt = "-p 1 -q $basequal -m $mapqual -F $minfrac -C $mindepth --report-monomorphic";
 # https://github.com/ekg/freebayes
 my $core_opt = $noref ? '--noref' : '';
 

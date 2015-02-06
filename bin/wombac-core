@@ -68,7 +68,7 @@ while (<VCFIN>) {
   #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT   DATA1 DATA2 DATA3 ...
   my($seq,$pos,undef,$ref,$alt,$qual,$filter,$info,$format,@data) = split m/\t/;
   my $line = $_;
-  print STDERR "Processed $. potential variant sites so far...\n" if $. % 10_000 == 0;
+  print STDERR "Processed $. sites so far...\n" if $. % 100_000 == 0;
 
   if ($seq eq '#CHROM') {
     $data[0] eq 'unknown' and die "Your BAM files must have \@RG ID: tags.";
@@ -89,7 +89,12 @@ while (<VCFIN>) {
 
 #  print STDERR ">>> $seq $pos $ref $alt $qual\n";
 #  print STDERR "\n<<< $line\n" if $verbose;
-  
+
+  if ($alt eq '.') {
+    print STDERR "Skipping $seq:$pos as no ALT variant\n" if $verbose;
+    next VARIANT;
+  }
+
   # not sure why this stuff gets through
   if ($qual < 100) {
     print STDERR "Skipping $seq:$pos as QUAL < 100\n" if $verbose;
@@ -99,6 +104,12 @@ while (<VCFIN>) {
   # extract the common tags (not per sample)  
   my $attr = vcf_tags_to_hash($info);
 
+  if ($attr->{NUMALT} == 0) {
+    # monomorphic site
+    print STDERR "Skipping $seq:$pos as monomorphic '$ref'\n" if $verbose;
+    next VARIANT;
+  }
+
   my @type = split m/,/, $attr->{TYPE};
   my @alt = split m/,/, $alt;
   my @genotype = ($ref, @alt, 'N');
@@ -106,7 +117,7 @@ while (<VCFIN>) {
     print STDERR "Skipping $seq:$pos as alleles aren't all SNP or MNP type: @type\n" if $verbose;
     next VARIANT;
   }
-  my $varlen = length($ref);
+  my $varlen = length($ref);  # should this be in $attr->{LEN} ?
   unless (all { length($_) == $varlen } @alt) {
     print STDERR "Skipping $seq:$pos as ALTs differ in length to REF: $ref | @alt\n" if $verbose;
     next VARIANT;
