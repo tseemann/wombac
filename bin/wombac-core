@@ -18,7 +18,7 @@ my $SEP = ',';
 my @cmdline = ($0, @ARGV);
 my $username = $ENV{LOGNAME} || $ENV{USER} || getpwuid($<);
 
-my(@Options, $verbose, $noref, $output, $vcf_fn, $mindepth, $minfrac, 
+my(@Options, $verbose, $noref, $output, $vcf_fn, $mindepth, $minfrac, $minqual,
              $noncore, $missym, $gapsym);
 setOptions();
 
@@ -96,8 +96,8 @@ while (<VCFIN>) {
   }
 
   # not sure why this stuff gets through
-  if ($qual < 100) {
-    print STDERR "Skipping $seq:$pos as QUAL < 100\n" if $verbose;
+  if ($qual > 0 and $qual < $minqual) {
+    print STDERR "Skipping $seq:$pos due to QUAL=$qual < $minqual\n" if $verbose;
     next VARIANT;
   }
 
@@ -275,10 +275,11 @@ sub setOptions {
     {OPT=>"verbose!",   VAR=>\$verbose, DEFAULT=>0, DESC=>"Verbose output"},
     {OPT=>"mindepth=i", VAR=>\$mindepth,DEFAULT=>10, DESC=>"Minimum depth to count as covered (in core)"},
     {OPT=>"minfrac=f",  VAR=>\$minfrac, DEFAULT=>0.9, DESC=>"Minimum fraction of allele to be taken seriously"},
+    {OPT=>"minqual=i",  VAR=>\$minqual,DEFAULT=>100, DESC=>"Minimum variant QUAL to consider"},
     {OPT=>"vcf=s",      VAR=>\$vcf_fn,  DEFAULT=>'all.vcf', DESC=>"Combined freebayes VCF 4.x file with all samples in DATA columns"},
     {OPT=>"noref!",     VAR=>\$noref,   DEFAULT=>0, DESC=>"Don't include reference in analysis"},
     {OPT=>"output=s",   VAR=>\$output,  DEFAULT=>'core', DESC=>"Output prefix for .aln/.bed/.gff/.vcf/.txt/.csv"},
-    {OPT=>"noncore!",   VAR=>\$noncore, DEFAULT=>0, DESC=>"Include non-core sites"},
+#    {OPT=>"noncore!",   VAR=>\$noncore, DEFAULT=>0, DESC=>"Include non-core sites"},
     {OPT=>"missym=s",   VAR=>\$missym,  DEFAULT=>'N', DESC=>"Symbol for missing value"},
     {OPT=>"gapsym=s",   VAR=>\$gapsym,  DEFAULT=>'-', DESC=>"Symbol for gap"},
   );
