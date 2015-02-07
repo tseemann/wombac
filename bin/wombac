@@ -22,7 +22,7 @@ my $OPSYS = $^O;
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # command line options
 
-my(@Options, $quiet, $outdir, $force, $cpus, $ref, $prefix,
+my(@Options, $quiet, $outdir, $force, $cpus, $ref, $prefix, $wholegenome,
              $run, $noref, $basequal, $mapqual, $mindepth, $minfrac, $add);
 setOptions();
 
@@ -243,8 +243,10 @@ for my $sample (@samples)
 my @bam = map { "$_.bam" } @id;
 my @bai = map { "$_.bam.bai" } @id;
 
-my $fb_opt = "-p 1 -q $basequal -m $mapqual -F $minfrac -C $mindepth --report-monomorphic";
 # https://github.com/ekg/freebayes
+my $fb_opt = "-p 1 -q $basequal -m $mapqual -F $minfrac -C $mindepth";
+$fb_opt .= " --report-monomorphic" if $wholegenome;
+
 my $core_opt = $noref ? '--noref' : '';
 
 print qq~
@@ -374,6 +376,7 @@ sub setOptions {
     {OPT=>"version",   VAR=>\&version,             DESC=>"Print version and exit"},
     {OPT=>"citation",  VAR=>\&show_citation,       DESC=>"Print citation for referencing $EXE"},
     {OPT=>"quiet!",    VAR=>\$quiet, DEFAULT=>0,   DESC=>"No screen output"},
+    {OPT=>"whole!",    VAR=>\$wholegenome, DEFAULT=>0,     DESC=>"Whole genome, not just core variants"},
     {OPT=>"ref=s",     VAR=>\$ref, DEFAULT=>'',    DESC=>"Reference FASTA file"},
     {OPT=>"noref!",    VAR=>\$noref, DEFAULT=>0,   DESC=>"Exclude reference from tree"},
     {OPT=>"outdir=s",  VAR=>\$outdir, DEFAULT=>'', DESC=>"Output folder"},
