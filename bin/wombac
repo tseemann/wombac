@@ -12,7 +12,7 @@ use Data::Dumper;
 # global variables
 
 my $EXE = $FindBin::RealScript;
-my $BINDIR = $FindBin::Bin;
+my $BINDIR = $FindBin::RealBin;
 my $VERSION = "2.0";
 my $SYNOPSIS = "Rapid bacterial core genome SNP alignments";
 my $AUTHOR = 'Torsten Seemann <torsten@seemann.id.au>';
@@ -56,6 +56,8 @@ for my $script (qw(wombac-shred_fasta wombac-core)) {
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # type check parameters
+
+$prefix eq 'all' and err("Sorry, 'all' may not be used as a --prefix");
 
 # special settings if --add is use
 if ($add) {
@@ -117,7 +119,7 @@ else {
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # set options
 
-my $bwa_mem_opts = '';
+my $bwa_mem_opts = '-v 2 -j';
 msg("Using extra BWA MEM options: $bwa_mem_opts");
 
 my $shred_opts = sprintf "--coverage %d", 2*$mindepth;
@@ -138,6 +140,10 @@ open my $MF, '>', "$outdir/Makefile";
 select $MF;
 
 print qq~
+
+MAKEFLAGS += --no-builtin-rules
+MAKEFLAGS += --no-builtin-variables
+.SUFFIXES: 
 
 PATH := $BINDIR/../binaries/noarch:\${PATH}:$BINDIR/../binaries/$OPSYS
 
@@ -251,20 +257,32 @@ my $core_opt = $noref ? '--noref' : '';
 
 print qq~
 
-
 $REGIONS: $REF.fai
 	fasta_generate_regions.py $RHS $CHUNKSIZE > $LHS
 
 all.vcf: $REF $REGIONS @bai
 	freebayes-parallel $REGIONS $CPUS -f $REF $fb_opt @bam > $LHS
 
-%.vcf %.bed %.gff %.aln %.txt %.csv %.nex: all.vcf
-	$BINDIR/wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output \$\* --vcf $RHS
+all.depth: $REGIONS all.bams @bai
+	parallel -k -j $CPUS "samtools depth -f all.bams -q $basequal -Q $mapqual -r {}" < $REGIONS > $LHS
+
+%.vcf %.bed %.gff %.aln %.nex %.txt %.csv: all.vcf all.depth
+	$BINDIR/wombac-core $core_opt --minfrac $minfrac --mindepth $mindepth --output \$\* --vcf all.vcf
 
 
 ~;
 
 select STDOUT;
+
+msg("Writing 'all.bams'");
+open my $BAMS, '>', "$outdir/all.bams";
+print $BAMS map { "$_\n" } @bam;
+close $BAMS;
+
+msg("Writing 'all.ids'");
+open my $IDS, '>', "$outdir/all.ids";
+print $IDS map { "$_\n" } @id;
+close $IDS;
 
 msg("Your tree will contain", scalar(@id), "samples.");
 msg("Folder $outdir/ is now set up for running.");
@@ -376,7 +394,7 @@ sub setOptions {
     {OPT=>"version",   VAR=>\&version,             DESC=>"Print version and exit"},
     {OPT=>"citation",  VAR=>\&show_citation,       DESC=>"Print citation for referencing $EXE"},
     {OPT=>"quiet!",    VAR=>\$quiet, DEFAULT=>0,   DESC=>"No screen output"},
-    {OPT=>"whole!",    VAR=>\$wholegenome, DEFAULT=>0,     DESC=>"Whole genome, not just core variants"},
+#    {OPT=>"whole!",    VAR=>\$wholegenome, DEFAULT=>0,     DESC=>"Whole genome, not just core variants"},
     {OPT=>"ref=s",     VAR=>\$ref, DEFAULT=>'',    DESC=>"Reference FASTA file"},
     {OPT=>"noref!",    VAR=>\$noref, DEFAULT=>0,   DESC=>"Exclude reference from tree"},
     {OPT=>"outdir=s",  VAR=>\$outdir, DEFAULT=>'', DESC=>"Output folder"},
