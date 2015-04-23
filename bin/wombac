@@ -43,7 +43,7 @@ $ENV{PATH} .= ":$BINDIR/../binaries/$OPSYS:$BINDIR/../binaries/noarch";
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 # check for exes
 
-for my $exe (qw(bwa freebayes parallel freebayes-parallel fasta_generate_regions.py vcfuniq vcffirstheader vcfstreamsort cat gzip tar make grep bgzip tabix FastTreeMP)) {
+for my $exe (qw(bwa freebayes parallel freebayes-parallel fasta_generate_regions.py vcfuniq vcffirstheader vcfstreamsort cat gzip tar make grep bgzip tabix FastTree)) {
   system("which $exe > /dev/null")==0 or err("Can not find '$exe' in PATH");
   msg("Found $exe - ok.");
 }
@@ -169,7 +169,7 @@ REF=ref.fa
 	bgzip -c $RHS > $LHS && tabix -f -p vcf $LHS
 
 %.tree: %.aln
-	FastTreeMP -gtr -nt $RHS > $LHS
+	FastTree -gtr -nt $RHS > $LHS
 
 all: $prefix.vcf.gz $prefix.tree
 
