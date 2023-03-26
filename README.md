@@ -1,12 +1,12 @@
-#wombac
+# wombac
 
 ## **WARNING!** Wombac is no longer supported. All development has moved to Snippy at https://github.com/tseemann/snippy
 
-##Synopsis
+## Synopsis
 
 Wombac rapidly finds core genome SNPs from samples and produces an alignment of those SNPs which can be used to build a phylogenomic tree. It can handle 100s of samples and uses multiple CPUs on a single system efficiently. Computations can re-used for building new trees when new samples are added, saving lots of time. Wombac only looks for substitution SNPs, not indels, and it may miss some SNPs, but it will find enough to build high-resolution trees.
 
-##Input
+## Input
 
 Snippy needs a reference genome in FASTA format (can be in multiple contigs) and a series of samples. A sample can either be:
 
@@ -14,7 +14,7 @@ Snippy needs a reference genome in FASTA format (can be in multiple contigs) and
 * a multi-FASTA file: eg. contigs.fa or NC_273461.fna
 * a .tar.gz file containing FASTA contig files: eg. Ecoli_K12mut.contig.tar.gz (from EBI/NCBI)
 
-##Output
+## Output
 
 Wombac produces standards-compliant / machine-readable output files.
 
@@ -23,11 +23,11 @@ Wombac produces standards-compliant / machine-readable output files.
 * VCF (per sample) and an overall .ALN (FASTA aligned core SNPs).
 
 
-##Etymology
+## Etymology
 
 The name Wombac is a combination of bac (for "Bacteria") and Wombat (to represent its Australian origin), which is an animal with a very solid core!
 
-##Usage
+## Usage
 
 ```
 % ls -R
@@ -52,19 +52,19 @@ K12mut.contigs.tar.gz
 (have a look at the SNP evidence and coordinates)
 ```
 
-##Excluding samples from the analysis
+## Excluding samples from the analysis
 
 If your tree has an outlier you do NOT need to re-run Wombac. You can use the 'wombac-core' script to regenerate the output files with different parameters, eg. remove one outlier sample.
 
-##Including sites with missing alleles
+## Including sites with missing alleles
 
 Run as normal, then use wombac-core with a new --output prefix and the --noncore option.
 
-##License
+## License
 
 Wombac is free software, released under the GPL (version 3).
 
-##Requirements
+## Requirements
 
 * Perl >= 5.6
 * bwa mem >= 0.7.10
